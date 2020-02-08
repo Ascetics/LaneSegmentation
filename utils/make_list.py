@@ -46,9 +46,9 @@ def _get_image_label_dir():
                 for image, label in ld_camera:  # 一一对应遍历所有的image和label
                     image_name = image
                     label_name = label
-                    image = os.path.join(image_camera, image)
-                    label = os.path.join(label_camera, label)
-                    yield image, label, image_name, label_name
+                    image_abspath = os.path.join(image_camera, image)
+                    label_abspath = os.path.join(label_camera, label)
+                    yield image_name, label_name, image_abspath, label_abspath
     pass
 
 
@@ -58,20 +58,31 @@ def _make_data_list(save_path):
     :param save_path: 保存的路径
     :return:
     """
+    # g = _get_image_label_dir()
+    # image_list = [image for _, _, image, _ in g]  # 生成器转换为image列表
+    # g = _get_image_label_dir()
+    # label_list = [label for _, _, _, label in g]  # 生成器转换为label列表
     g = _get_image_label_dir()
-    image_list = [image for _, _, image, _ in g]  # 生成器转换为image列表
-    g = _get_image_label_dir()
-    label_list = [label for _, _, _, label in g]  # 生成器转换为label列表
-    df = pd.DataFrame({'image': image_list, 'label': label_list})
+    dirs = list(g)
+
+    df = pd.DataFrame(
+        data=dirs,
+        columns=['image', 'lable', 'image_abspath', 'label_abspath']
+    )
+
     df_shuffle = shuffle(df)
     df_shuffle.to_csv(save_path, index=False)  # 不保存行索引（行号）
 
-    # 70%做训练，30%做测试
-    train_size = int(df_shuffle.shape[0] * 0.8)
-    df_train = df_shuffle[0:train_size]
-    df_test = df_shuffle[train_size:]
+    # 70%做训练，20%做推断，10%做测试
+    train_size = int(df_shuffle.shape[0] * 0.7)
+    valid_size = int(df_shuffle.shape[0] * 0.2)
+
+    df_train = df_shuffle[0: train_size]
+    df_valid = df_shuffle[train_size: train_size + valid_size]
+    df_test = df_shuffle[train_size + valid_size:]
 
     df_train.to_csv(os.path.join(os.path.dirname(save_path), 'train.csv'), index=False)
+    df_valid.to_csv(os.path.join(os.path.dirname(save_path), 'valid.csv'), index=False)
     df_test.to_csv(os.path.join(os.path.dirname(save_path), 'test.csv'), index=False)
 
 
@@ -79,7 +90,7 @@ if __name__ == '__main__':
     """
     单元测试
     """
-    # 生成csv
+
     save_path = os.path.join(os.pardir, 'data_list')
     save_path = os.path.join(save_path, 'all.csv')
     _make_data_list(save_path)
@@ -104,7 +115,7 @@ if __name__ == '__main__':
         :return: 无
         """
         g = _get_image_label_dir()
-        for _, _, img, lbl in g:
+        for img, lbl, _, _ in g:
             s = input('>>>')
             if s == 'q':
                 break
@@ -112,4 +123,4 @@ if __name__ == '__main__':
             print(lbl)
             pass
 
-    # test__gen_image_label_dir()
+    # test__get_image_label_dir()
