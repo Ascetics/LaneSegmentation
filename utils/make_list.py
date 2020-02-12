@@ -2,53 +2,47 @@ import os
 import pandas as pd
 from sklearn.utils import shuffle
 
-IMAGE_BASE = '/root/data/LaneSeg/Image_Data'
-LABEL_BASE = '/root/data/LaneSeg/Gray_Label'
-
 
 def _get_image_label_dir():
     """
     遍历服务器image和label目录，将image和label一一对应
     :return: 生成器（image绝对路径，label绝对路径，image文件名，label文件名）
     """
-    image_base = os.path.abspath(os.path.join(IMAGE_BASE))  # image的base目录
-    label_base = os.path.abspath(os.path.join(LABEL_BASE))  # label的base目录
-    ld_image_base = os.listdir(image_base)  # 所有image的road目录
-    ld_label_base = os.listdir(label_base)  # 所有label的road目录
-    ld_image_base.sort()  # 排序
-    ld_label_base.sort()  # 排序
-    ld_base = zip(ld_image_base, ld_label_base)  # road一一对应
-    for image_road, label_road in ld_base:  # 一一对应遍历所有road目录
-        image_road = os.path.join(image_base, image_road)
-        label_road = os.path.join(label_base, label_road)
-        label_road = os.path.join(label_road, 'Label')  # 服务器上label多了一层Label目录
-        ld_image_road = os.listdir(image_road)
-        ld_label_road = os.listdir(label_road)
-        ld_image_road.sort()
-        ld_label_road.sort()
-        ld_road = zip(ld_image_road, ld_label_road)
-        for image_record, label_record in ld_road:  # 一一对应遍历所有record目录
-            image_record = os.path.join(image_road, image_record)
-            label_record = os.path.join(label_road, label_record)
-            ld_image_record = os.listdir(image_record)
-            ld_label_record = os.listdir(label_record)
-            ld_image_record.sort()
-            ld_label_record.sort()
-            ld_record = zip(ld_image_record, ld_label_record)
-            for image_camera, label_camera in ld_record:  # 一一对应遍历所有camera目录
-                image_camera = os.path.join(image_record, image_camera)
-                label_camera = os.path.join(label_record, label_camera)
-                ld_image_camera = os.listdir(image_camera)
-                ld_label_camera = os.listdir(label_camera)
-                ld_image_camera.sort()
-                ld_label_camera.sort()
-                ld_camera = zip(ld_image_camera, ld_label_camera)
-                for image, label in ld_camera:  # 一一对应遍历所有的image和label
-                    image_name = image
-                    label_name = label
+    data_err = 'data error. check!'
+    image_base = os.path.join('/root/data/LaneSeg/Image_Data')
+    label_base = os.path.join('/root/data/LaneSeg/Gray_Label')
+    for road in os.listdir(image_base):
+        image_road = os.path.join(image_base, road)
+        label_road = os.path.join(label_base, 'Label_' + str.lower(road))
+        if not (os.path.isdir(image_road) and
+                os.path.exists(label_road) and
+                os.path.isdir(label_road)):
+            print(image_road, label_road, data_err)
+            continue
+        for record in os.listdir(image_road):
+            image_record = os.path.join(image_road, record)
+            label_record = os.path.join(label_road, 'Label/' + record)  # 服务器上label多了一层Label
+            if not (os.path.isdir(image_record) and
+                    os.path.exists(label_record) and
+                    os.path.isdir(label_record)):
+                print(image_record, label_record, data_err)
+                continue
+            for camera in os.listdir(image_record):
+                image_camera = os.path.join(image_record, camera)
+                label_camera = os.path.join(label_record, camera)
+                if not (os.path.isdir(image_camera) and
+                        os.path.exists(label_camera) and
+                        os.path.isdir(label_camera)):
+                    print(image_camera, label_camera, data_err)
+                    continue
+                for image in os.listdir(image_camera):
                     image_abspath = os.path.join(image_camera, image)
-                    label_abspath = os.path.join(label_camera, label)
-                    yield image_name, label_name, image_abspath, label_abspath
+                    label_abspath = os.path.join(label_camera, image.replace('.jpg', '_bin.png'))
+                    if not (os.path.isfile(image_abspath) and
+                            os.path.exists(label_abspath) and
+                            os.path.isfile(label_abspath)):
+                        print(image_abspath, label_abspath, data_err)
+                    yield image_abspath, label_abspath
     pass
 
 
@@ -58,16 +52,12 @@ def _make_data_list(save_path):
     :param save_path: 保存的路径
     :return:
     """
-    # g = _get_image_label_dir()
-    # image_list = [image for _, _, image, _ in g]  # 生成器转换为image列表
-    # g = _get_image_label_dir()
-    # label_list = [label for _, _, _, label in g]  # 生成器转换为label列表
     g = _get_image_label_dir()
-    dirs = list(g)
+    abspaths = list(g)
 
     df = pd.DataFrame(
-        data=dirs,
-        columns=['image', 'lable', 'image_abspath', 'label_abspath']
+        data=abspaths,
+        columns=['image', 'lable']
     )
 
     df_shuffle = shuffle(df)
@@ -76,6 +66,9 @@ def _make_data_list(save_path):
     # 70%做训练，20%做推断，10%做测试
     train_size = int(df_shuffle.shape[0] * 0.7)
     valid_size = int(df_shuffle.shape[0] * 0.2)
+
+    print('total: {:d} | train: {:d} | val: {:d} | test: {:d}'.format(df_shuffle.shape[0], train_size, valid_size,
+                                                                      df_shuffle.shape[0] - train_size - valid_size))
 
     df_train = df_shuffle[0: train_size]
     df_valid = df_shuffle[train_size: train_size + valid_size]
@@ -96,31 +89,18 @@ if __name__ == '__main__':
     _make_data_list(save_path)
 
 
-    def test__make_data_list():
-        """
-        单元测试，将csv保存在data_list下的make_test.csv
-        :return:
-        """
-        save_path = os.path.join(os.pardir, 'data_list')
-        save_path = os.path.join(save_path, 'make_test.csv')
-        _make_data_list(save_path)
-        pass
-
-
-    # test__make_data_list()
-
     def test__get_image_label_dir():
         """
         单元测试，每次按键都应该输出一一对应的image名和label名。按q退出
         :return: 无
         """
         g = _get_image_label_dir()
-        for img, lbl, _, _ in g:
+        for image, label in g:
             s = input('>>>')
             if s == 'q':
                 break
-            print(img)
-            print(lbl)
+            print(image)
+            print(label)
             pass
 
     # test__get_image_label_dir()
