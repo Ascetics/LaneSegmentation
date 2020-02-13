@@ -5,7 +5,7 @@ import os
 import torch
 
 
-def bilinear_interpolation(src, dst_size):
+def bilinear_interpolation(src, dst_size, align_corners=False):
     """
     双线性插值高效实现
     :param src: 源图像H*W*C
@@ -20,11 +20,15 @@ def bilinear_interpolation(src, dst_size):
     # 矩阵方式实现
     h_d = np.arange(dst_h)  # 目标图像H方向坐标
     w_d = np.arange(dst_w)  # 目标图像W方向坐标
-    h = float(src_h) / dst_h * (h_d + 0.5) - 0.5  # 将目标图像H坐标映射到源图像上
-    w = float(src_w) / dst_w * (w_d + 0.5) - 0.5  # 将目标图像W坐标映射到源图像上
+    if align_corners:
+        h = float(src_h - 1) / (dst_h - 1) * h_d
+        w = float(src_w - 1) / (dst_w - 1) * w_d
+    else:
+        h = float(src_h) / dst_h * (h_d + 0.5) - 0.5  # 将目标图像H坐标映射到源图像上
+        w = float(src_w) / dst_w * (w_d + 0.5) - 0.5  # 将目标图像W坐标映射到源图像上
 
-    h = np.clip(h, 0, src_h - 1) # 防止越界，最上一行映射后是负数，置为0
-    w = np.clip(w, 0, src_w - 1) # 防止越界，最左一行映射后是负数，置为0
+    h = np.clip(h, 0, src_h - 1)  # 防止越界，最上一行映射后是负数，置为0
+    w = np.clip(w, 0, src_w - 1)  # 防止越界，最左一行映射后是负数，置为0
 
     h = np.repeat(h.reshape(dst_h, 1), dst_w, axis=1)  # 同一行映射的h值都相等
     w = np.repeat(w.reshape(dst_w, 1), dst_h, axis=1).T  # 同一列映射的w值都相等
@@ -72,7 +76,10 @@ if __name__ == "__main__":
         fig.tight_layout()
         plt.show()
         pass
+
+
     unit_test2()
+
 
     def unit_test3():
         src = np.array([[1, 2], [3, 4]])
@@ -92,7 +99,3 @@ if __name__ == "__main__":
         )
         print(tdst)
     # unit_test3()
-
-
-
-
