@@ -10,6 +10,7 @@ def bilinear_interpolation(src, dst_size, align_corners=False):
     双线性插值高效实现
     :param src: 源图像H*W*C
     :param dst_size: 目标图像大小H*W
+    :param align_corners: 换算坐标的不同方式
     :return: 双线性插值后的图像
     """
     (src_h, src_w, src_c) = src.shape  # 原图像大小 H*W*C

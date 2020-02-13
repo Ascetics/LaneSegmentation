@@ -8,7 +8,8 @@ def bilinear_interpolate(src, dst_size, align_corners=False):
     """
     双线性差值
     :param src: 原图像张量 NCHW
-    :param dst_size: 目标图像spatial大小HW
+    :param dst_size: 目标图像spatial大小(H,W)
+    :param align_corners: 换算坐标的不同方式
     :return: 目标图像张量NCHW
     """
     src_n, src_c, src_h, src_w = src.shape
