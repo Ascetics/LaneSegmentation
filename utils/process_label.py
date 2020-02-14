@@ -3,72 +3,72 @@ import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
 
-def id_to_trainid(image_id):
+def id_to_trainid(label_id):
     """
     要求输入的图像是灰度读图，灰阶0-255。
     matplotlib.img读取灰度图像的灰阶是0.0-1.0，需要自己处理到0-255
-    :param image_id: id标注的label图像
+    :param label_id: id标注的label图像
     :return: trainid标注的label图像
     """
-    image_trainid = np.zeros(image_id.shape, dtype=np.uint8)
+    label_trainid = np.zeros(label_id.shape, dtype=np.uint8)
 
     # trainId = 0
     # dst[src == 0] = 0
-    image_trainid[image_id == 255] = 0
-    image_trainid[image_id == 249] = 0
+    label_trainid[label_id == 255] = 0
+    label_trainid[label_id == 249] = 0
 
     # trainId = 1
-    image_trainid[image_id == 200] = 1
-    image_trainid[image_id == 204] = 1
-    image_trainid[image_id == 213] = 0  # ignoreInEval
-    image_trainid[image_id == 209] = 1
-    image_trainid[image_id == 206] = 0
-    image_trainid[image_id == 207] = 0
+    label_trainid[label_id == 200] = 1
+    label_trainid[label_id == 204] = 1
+    label_trainid[label_id == 213] = 0  # ignoreInEval
+    label_trainid[label_id == 209] = 1
+    label_trainid[label_id == 206] = 0
+    label_trainid[label_id == 207] = 0
 
     # trainId = 2
-    image_trainid[image_id == 201] = 2
-    image_trainid[image_id == 203] = 2
-    image_trainid[image_id == 211] = 0
-    image_trainid[image_id == 208] = 0
+    label_trainid[label_id == 201] = 2
+    label_trainid[label_id == 203] = 2
+    label_trainid[label_id == 211] = 0
+    label_trainid[label_id == 208] = 0
 
     # trainId = 3
-    image_trainid[image_id == 216] = 0
-    image_trainid[image_id == 217] = 3
-    image_trainid[image_id == 215] = 0
+    label_trainid[label_id == 216] = 0
+    label_trainid[label_id == 217] = 3
+    label_trainid[label_id == 215] = 0
 
     # trainId = 4
-    image_trainid[image_id == 218] = 0
-    image_trainid[image_id == 219] = 0
+    label_trainid[label_id == 218] = 0
+    label_trainid[label_id == 219] = 0
 
     # trainId = 5->4,因trainId=4都被忽略，5递进为4，后面一样递进
-    image_trainid[image_id == 210] = 4
-    image_trainid[image_id == 232] = 0
+    label_trainid[label_id == 210] = 4
+    label_trainid[label_id == 232] = 0
 
     # trainId = 6->5
-    image_trainid[image_id == 214] = 5
+    label_trainid[label_id == 214] = 5
 
     # trainId = 7->6
-    image_trainid[image_id == 202] = 0
-    image_trainid[image_id == 220] = 6
-    image_trainid[image_id == 221] = 6
-    image_trainid[image_id == 222] = 6
-    image_trainid[image_id == 231] = 0
-    image_trainid[image_id == 224] = 6
-    image_trainid[image_id == 225] = 6
-    image_trainid[image_id == 226] = 6
-    image_trainid[image_id == 230] = 0
-    image_trainid[image_id == 228] = 0
-    image_trainid[image_id == 229] = 0
-    image_trainid[image_id == 233] = 0
+    label_trainid[label_id == 202] = 0
+    label_trainid[label_id == 220] = 6
+    label_trainid[label_id == 221] = 6
+    label_trainid[label_id == 222] = 6
+    label_trainid[label_id == 231] = 0
+    label_trainid[label_id == 224] = 6
+    label_trainid[label_id == 225] = 6
+    label_trainid[label_id == 226] = 6
+    label_trainid[label_id == 230] = 0
+    label_trainid[label_id == 228] = 0
+    label_trainid[label_id == 229] = 0
+    label_trainid[label_id == 233] = 0
 
     # trainId = 8->7
-    image_trainid[image_id == 205] = 7
-    image_trainid[image_id == 212] = 0
-    image_trainid[image_id == 227] = 7
-    image_trainid[image_id == 223] = 0
-    image_trainid[image_id == 250] = 7
+    label_trainid[label_id == 205] = 7
+    label_trainid[label_id == 212] = 0
+    label_trainid[label_id == 227] = 7
+    label_trainid[label_id == 223] = 0
+    label_trainid[label_id == 250] = 7
 
-    return image_trainid
+    return label_trainid
 
 
 def trainid_to_id(label_trainid):
