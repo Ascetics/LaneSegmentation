@@ -192,13 +192,14 @@ def unet(in_channels, n_class, upmode='deconv'):
 
 
 def unet_resnet(in_channels, n_class, upmode='deconv'):
+    # TODO ResNet实现
     return
 
 
 if __name__ == '__main__':
     channel = 1
     size = 572
-    n_class=2
+    n_class = 2
     net = unet(channel, n_class)
     x = torch.randint(0, 255, (size, size), dtype=torch.float32) \
         .view((1, channel, size, size))
