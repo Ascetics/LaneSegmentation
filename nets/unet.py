@@ -28,7 +28,7 @@ class UNetFactory(nn.Module):
         x, shortcuts = self.encoder(x)
         if self.bottom is not None:
             x = self.bottom(x)
-            print('bottom', x.shape)
+            # print('bottom', x.shape)  # for debug
         x = self.decoder(x, shortcuts)
         x = self.classifier(x)
         return x
@@ -56,7 +56,7 @@ class UNetEncoder(nn.Module):
         for i, block in enumerate(self.encode_blocks):
             x = block(x)
             shortcuts.append(x)
-            print('en', i, x.shape)
+            # print('en', i, x.shape)  # for debug
         return x, shortcuts
 
     pass
@@ -101,7 +101,7 @@ class UNetDecoder(nn.Module):
             x, s = self._crop(x, shortcuts[-(i + 1)])  # 剪裁
             x = torch.cat((x, s), dim=1)  # concatenate特征融合
             x = block(x)
-            print('de', i, x.shape)
+            # print('de', i, x.shape)  # for debug
         return x
 
     pass
@@ -317,15 +317,15 @@ if __name__ == '__main__':
     单元测试
     """
     channel = 1
-    n_class = 2
+    num_class = 2
     # net = unet(channel, n_class)
-    net = unet_res_block(channel, n_class)
+    net = unet_res_block(channel, num_class)
 
     size = 572
-    x = torch.randint(0, 255, (size, size), dtype=torch.float32) \
+    in_data = torch.randint(0, 255, (size, size), dtype=torch.float32) \
         .view((1, channel, size, size))
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     net.to(device)
-    x = x.to(device)
-    out = net(x)
+    in_data = in_data.to(device)
+    out_data = net(in_data)
