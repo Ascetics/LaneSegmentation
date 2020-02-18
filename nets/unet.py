@@ -17,6 +17,10 @@ class UNetFactory(nn.Module):
         :param decode_blocks: decoder部分，可以替换成ResNet等
         :param n_class: 分类数
         """
+        assert len(encode_blocks) == 4
+        assert len(decode_ups) == 4
+        assert len(decode_blocks) == 4
+
         super(UNetFactory, self).__init__()
         self.encoder = UNetEncoder(encode_blocks)
         self.bottom = encode_bottom
@@ -96,7 +100,8 @@ class UNetDecoder(nn.Module):
         :param shortcuts: Encoder生成的shortcuts
         :return: Decoder结果
         """
-        for i, (up, block) in enumerate(zip(self.decode_ups, self.decode_blocks)):
+        for i, (up, block) in enumerate(
+                zip(self.decode_ups, self.decode_blocks)):
             x = up(x)  # 上采样
             x, s = self._crop(x, shortcuts[-(i + 1)])  # 剪裁
             x = torch.cat((x, s), dim=1)  # concatenate特征融合
@@ -192,7 +197,7 @@ class _UNetDecodeBlock(nn.Module):
     pass
 
 
-def unet(in_channels, n_class, upmode='deconv'):
+def unet(in_channels, n_class, upmode='upconv'):
     """
     生成论文的UNet
     :param in_channels: 输入通道数
@@ -200,6 +205,8 @@ def unet(in_channels, n_class, upmode='deconv'):
     :param upmode: 上采样模式，默认转置卷积，'bilinear'双线性差值
     :return: 论文UNet网络
     """
+    assert upmode == 'upconv' or upmode == 'bilinear'
+
     # Encoder
     encode_blocks = [
         _UNetEncodeBlock(in_channels, 64),
@@ -211,7 +218,7 @@ def unet(in_channels, n_class, upmode='deconv'):
 
     # Upsample
     decode_ups = None
-    if upmode == 'deconv':
+    if upmode == 'upconv':
         decode_ups = _decode_ups_deconv()
     elif upmode == 'bilinear':
         decode_ups = _decode_ups_bilinear()
@@ -223,7 +230,8 @@ def unet(in_channels, n_class, upmode='deconv'):
         _UNetDecodeBlock(256, 128),
         _UNetDecodeBlock(128, 64),
     ]
-    return UNetFactory(encode_blocks, encode_bottom, decode_ups, decode_blocks, n_class)
+    return UNetFactory(encode_blocks, encode_bottom, decode_ups, decode_blocks,
+                       n_class)
 
 
 ################################################################################
@@ -276,7 +284,7 @@ class _UNetDecodeResBlock(nn.Module):
         return x
 
 
-def unet_res_block(in_channels, n_class, upmode='deconv'):
+def unet_res_block(in_channels, n_class, upmode='upconv'):
     """
     用Residual Block替换论文中的两层卷积形成的UNet
     :param in_channels: 输入通道数
@@ -284,6 +292,8 @@ def unet_res_block(in_channels, n_class, upmode='deconv'):
     :param upmode: 上采样模式，默认转置卷积，'bilinear'双线性差值
     :return: 用Residual Block替换论文中的两层卷积形成的UNet
     """
+    assert upmode == 'upconv' or upmode == 'bilinear'
+
     # Encoder
     encode_blocks = [
         _UNetEncodeResBlock(in_channels, 64),
@@ -295,7 +305,7 @@ def unet_res_block(in_channels, n_class, upmode='deconv'):
 
     # Upsample
     decode_ups = None
-    if upmode == 'deconv':
+    if upmode == 'upconv':
         decode_ups = _decode_ups_deconv()
     elif upmode == 'bilinear':
         decode_ups = _decode_ups_bilinear()
@@ -307,7 +317,8 @@ def unet_res_block(in_channels, n_class, upmode='deconv'):
         _UNetDecodeResBlock(256, 128),
         _UNetDecodeResBlock(128, 64),
     ]
-    return UNetFactory(encode_blocks, encode_bottom, decode_ups, decode_blocks, n_class)
+    return UNetFactory(encode_blocks, encode_bottom, decode_ups, decode_blocks,
+                       n_class)
 
 
 ################################################################################
