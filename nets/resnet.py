@@ -2,24 +2,34 @@ import torch
 import torch.nn as nn
 
 
-class ResNetFactory(nn.Module):
-    def __init__(self, block, blocks, in_channels=3, n_class=1000):
-        # block block类型, basic block 或者 bottleneck block
-        # blocks 长度为4的列表，conv2-conv5各有几个block
-        super(ResNetFactory, self).__init__()
+class ResNet(nn.Module):
+    def __init__(self, block, num_blocks, in_channels=3, n_class=1000,
+                 batch_norm=None):
+        """
+        :param block: block类型，BasicBlock或者BottleneckBlock
+        :param num_blocks: layer1-4中包含block的个数，取列表的前4个元素
+        :param in_channels: 输入通道，默认是3
+        :param n_class: 分类数
+        :param batch_norm: 指定bn
+        """
+        super(ResNet, self).__init__()
+        if batch_norm is None:
+            batch_norm = nn.BatchNorm2d
+        self._batch_norm = batch_norm  # bn不希望被外部使用
+
         self.in_channels = 64  # 各layer的输入channel，在_make_layer中更新
 
         self.conv1 = nn.Conv2d(in_channels, self.in_channels, 7, stride=2,
                                padding=3, bias=False)  # 后面接bn，不要bias
-        self.bn1 = nn.BatchNorm2d(self.in_channels)
+        self.bn1 = batch_norm(self.in_channels)
         self.relu1 = nn.ReLU(inplace=True)
 
         self.maxpool = nn.MaxPool2d(3, stride=2, padding=1)
-        self.layer1 = self._make_layer(block, blocks[0], 64)
+        self.layer1 = self._make_layer(block, num_blocks[0], 64)  # 不进行下采样
 
-        self.layer2 = self._make_layer(block, blocks[1], 128, stride=2)
-        self.layer3 = self._make_layer(block, blocks[2], 256, stride=2)
-        self.layer4 = self._make_layer(block, blocks[3], 512, stride=2)
+        self.layer2 = self._make_layer(block, num_blocks[1], 128, stride=2)
+        self.layer3 = self._make_layer(block, num_blocks[2], 256, stride=2)
+        self.layer4 = self._make_layer(block, num_blocks[3], 512, stride=2)
 
         self.avgpool = nn.AdaptiveAvgPool2d(1)  # 全局平均池化输出1x1
         self.fc = nn.Linear(block.expansion * 512, n_class)
@@ -33,8 +43,9 @@ class ResNetFactory(nn.Module):
         :param channels: 本层第一个卷积输出channel数
         :return:
         """
+        batch_norm = self._batch_norm
 
-        # 第一个block要单独考虑，是否下采样，是否project
+        # 第一个block要单独考虑下采样，是否project
         project = None
         if stride != 1 or self.in_channels != block.expansion * channels:
             project = nn.Sequential(
@@ -42,16 +53,17 @@ class ResNetFactory(nn.Module):
                 nn.BatchNorm2d(block.expansion * channels)
             )
             pass
-        layer = []
-        layer.append(
-            block(self.in_channels, channels, stride=stride, project=project)
-        )
+        layer = [
+            block(self.in_channels, channels, stride=stride, project=project,
+                  batch_norm=batch_norm)
+        ]
 
         self.in_channels = block.expansion * channels  # 第一个block之后更新输入channel
 
-        # 其他block
+        # 其他block，都不进行下采样
         for _ in range(1, num_blocks):  # 其他层
-            layer.append(block(self.in_channels, channels))
+            layer.append(
+                block(self.in_channels, channels, batch_norm=batch_norm))
             pass
         return nn.Sequential(*layer)
 
@@ -59,29 +71,19 @@ class ResNetFactory(nn.Module):
         print('in', x.shape)
 
         x = self.conv1(x)  # 1/2
-        print('conv1', x.shape)
         x = self.bn1(x)
         x = self.relu1(x)
 
         x = self.maxpool(x)  # 1/4
-        print('maxpool', x.shape)
         x = self.layer1(x)
-        print('layer1', x.shape)
 
         x = self.layer2(x)  # 1/8
-        print('layer2', x.shape)
         x = self.layer3(x)  # 1/16
-        print('layer3', x.shape)
         x = self.layer4(x)  # 1/32
-        print('layer4', x.shape)
 
         x = self.avgpool(x)  # 张量
-        print('avgpool', x.shape)
         x = x.view(1, -1)  # 拉成向量
-        print('vec', x.shape)
-
         x = self.fc(x)
-        print('out', x.shape)
         return x
 
 
@@ -164,11 +166,11 @@ class BasicBlock(nn.Module):
 
 
 def resnet18():
-    return ResNetFactory(BasicBlock, blocks=[2, 2, 2, 2])
+    return ResNet(BasicBlock, num_blocks=[2, 2, 2, 2])
 
 
 def resnet34():
-    return ResNetFactory(BasicBlock, blocks=[3, 4, 6, 3])
+    return ResNet(BasicBlock, num_blocks=[3, 4, 6, 3])
 
 
 class BottleneckBlock(nn.Module):
@@ -233,15 +235,15 @@ class BottleneckBlock(nn.Module):
 
 
 def resnet50():
-    return ResNetFactory(BottleneckBlock, blocks=[3, 4, 6, 3])
+    return ResNet(BottleneckBlock, num_blocks=[3, 4, 6, 3])
 
 
 def resnet101():
-    return ResNetFactory(BottleneckBlock, blocks=[3, 4, 23, 3])
+    return ResNet(BottleneckBlock, num_blocks=[3, 4, 23, 3])
 
 
 def resnet152():
-    return ResNetFactory(BottleneckBlock, blocks=[3, 8, 36, 3])
+    return ResNet(BottleneckBlock, num_blocks=[3, 8, 36, 3])
 
 
 if __name__ == '__main__':
