@@ -17,9 +17,8 @@ class UNetFactory(nn.Module):
         :param decode_blocks: decoder部分，可以替换成ResNet等
         :param n_class: 分类数
         """
-        assert len(encode_blocks) == 4
-        assert len(decode_ups) == 4
-        assert len(decode_blocks) == 4
+        assert len(encode_blocks) == len(decode_blocks)
+        assert len(decode_blocks) == len(decode_ups)
 
         super(UNetFactory, self).__init__()
         self.encoder = UNetEncoder(encode_blocks)
