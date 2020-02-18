@@ -31,9 +31,10 @@ class UNetFactory(nn.Module):
         x, shortcuts = self.encoder(x)
         if self.bottom is not None:
             x = self.bottom(x)
-            # print('bottom', x.shape)  # for debug
+            print('bottom', x.shape)  # for debug
         x = self.decoder(x, shortcuts)
         x = self.classifier(x)
+        print('classifier', x.shape)
         return x
 
     pass
@@ -59,7 +60,7 @@ class UNetEncoder(nn.Module):
         for i, block in enumerate(self.encode_blocks):
             x = block(x)
             shortcuts.append(x)
-            # print('en', i, x.shape)  # for debug
+            print('en', i, x.shape)  # for debug
         return x, shortcuts
 
     pass
@@ -105,63 +106,44 @@ class UNetDecoder(nn.Module):
             x, s = self._crop(x, shortcuts[-(i + 1)])  # 剪裁
             x = torch.cat((x, s), dim=1)  # concatenate特征融合
             x = block(x)
-            # print('de', i, x.shape)  # for debug
+            print('de', i, x.shape)  # for debug
         return x
 
     pass
 
 
-def _decode_ups_deconv():
+def upconv(in_channels, out_channels):
     """
     论文中的上采样，用转置卷积实现
     :return:
     """
-    return [
-        nn.ConvTranspose2d(1024, 512, 2, stride=2),
-        nn.ConvTranspose2d(512, 256, 2, stride=2),
-        nn.ConvTranspose2d(256, 128, 2, stride=2),
-        nn.ConvTranspose2d(128, 64, 2, stride=2),
-    ]
+    return nn.ConvTranspose2d(in_channels, out_channels, 2, stride=2)
 
 
-def _decode_ups_bilinear():
+def upsample(in_channels, out_channels):
     """
     论文中的上采样，用双线性差值实现
     :return:
     """
-    return [
-        nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
-            nn.Conv2d(1024, 512, 1)
-        ),
-        nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
-            nn.Conv2d(512, 256, 1)
-        ),
-        nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
-            nn.Conv2d(256, 128, 1)
-        ),
-        nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
-            nn.Conv2d(128, 64, 1)
-        ),
-    ]
+    return nn.Sequential(
+        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
+        nn.Conv2d(in_channels, out_channels, 1)
+    )
 
 
 ################################################################################
 
 class _UNetEncodeBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, maxpool=False):
+    def __init__(self, in_channels, out_channels, maxpool=False, padding=0):
         super(_UNetEncodeBlock, self).__init__()
         self.maxpool = None
         if maxpool:
             self.maxpool = nn.MaxPool2d(2, stride=2, ceil_mode=True)
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3),
+            nn.Conv2d(in_channels, out_channels, 3, padding=padding),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3),
+            nn.Conv2d(out_channels, out_channels, 3, padding=padding),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
@@ -177,13 +159,13 @@ class _UNetEncodeBlock(nn.Module):
 
 
 class _UNetDecodeBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
+    def __init__(self, in_channels, out_channels, padding=0):
         super(_UNetDecodeBlock, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3),
+            nn.Conv2d(in_channels, out_channels, 3, padding=padding),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3),
+            nn.Conv2d(out_channels, out_channels, 3, padding=padding),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
@@ -196,38 +178,40 @@ class _UNetDecodeBlock(nn.Module):
     pass
 
 
-def unet(in_channels, n_class, upmode='upconv'):
+def unet(in_channels, n_class, upmode='upconv', padding=0):
     """
     生成论文的UNet
     :param in_channels: 输入通道数
     :param n_class: 分类数
-    :param upmode: 上采样模式，默认转置卷积，'bilinear'双线性差值
+    :param upmode: 上采样模式，默认'upconv'转置卷积，'upsample'双线性差值
     :return: 论文UNet网络
     """
-    assert upmode == 'upconv' or upmode == 'bilinear'
+    assert upmode == 'upconv' or upmode == 'upsample'
 
     # Encoder
     encode_blocks = [
-        _UNetEncodeBlock(in_channels, 64),
-        _UNetEncodeBlock(64, 128, maxpool=True),
-        _UNetEncodeBlock(128, 256, maxpool=True),
-        _UNetEncodeBlock(256, 512, maxpool=True),
+        _UNetEncodeBlock(in_channels, 64, padding=padding),
+        _UNetEncodeBlock(64, 128, maxpool=True, padding=padding),
+        _UNetEncodeBlock(128, 256, maxpool=True, padding=padding),
+        _UNetEncodeBlock(256, 512, maxpool=True, padding=padding),
     ]
-    encode_bottom = _UNetEncodeBlock(512, 1024, maxpool=True)
+    encode_bottom = _UNetEncodeBlock(512, 1024, maxpool=True, padding=padding)
 
     # Upsample
     decode_ups = None
     if upmode == 'upconv':
-        decode_ups = _decode_ups_deconv()
-    elif upmode == 'bilinear':
-        decode_ups = _decode_ups_bilinear()
+        decode_ups = [upconv(1024, 512), upconv(512, 256),
+                      upconv(256, 128), upconv(128, 64)]
+    elif upmode == 'upsample':
+        decode_ups = [upsample(1024, 512), upsample(512, 256),
+                      upsample(256, 128), upsample(128, 64)]
 
     # Decoder
     decode_blocks = [
-        _UNetDecodeBlock(1024, 512),
-        _UNetDecodeBlock(512, 256),
-        _UNetDecodeBlock(256, 128),
-        _UNetDecodeBlock(128, 64),
+        _UNetDecodeBlock(1024, 512, padding=padding),
+        _UNetDecodeBlock(512, 256, padding=padding),
+        _UNetDecodeBlock(256, 128, padding=padding),
+        _UNetDecodeBlock(128, 64, padding=padding),
     ]
     return UNetFactory(encode_blocks, encode_bottom, decode_ups, decode_blocks,
                        n_class)
@@ -235,7 +219,7 @@ def unet(in_channels, n_class, upmode='upconv'):
 
 ################################################################################
 
-
+# TODO 待ResNet完成后修改
 class _UNetEncodeResBlock(nn.Module):
     def __init__(self, in_channels, out_channels, maxpool=False):
         super(_UNetEncodeResBlock, self).__init__()
@@ -291,7 +275,7 @@ def unet_res_block(in_channels, n_class, upmode='upconv'):
     :param upmode: 上采样模式，默认转置卷积，'bilinear'双线性差值
     :return: 用Residual Block替换论文中的两层卷积形成的UNet
     """
-    assert upmode == 'upconv' or upmode == 'bilinear'
+    assert upmode == 'upconv' or upmode == 'upsample'
 
     # Encoder
     encode_blocks = [
@@ -305,9 +289,11 @@ def unet_res_block(in_channels, n_class, upmode='upconv'):
     # Upsample
     decode_ups = None
     if upmode == 'upconv':
-        decode_ups = _decode_ups_deconv()
-    elif upmode == 'bilinear':
-        decode_ups = _decode_ups_bilinear()
+        decode_ups = [upconv(1024, 512), upconv(512, 256),
+                      upconv(256, 128), upconv(128, 64)]
+    elif upmode == 'upsample':
+        decode_ups = [upsample(1024, 512), upsample(512, 256),
+                      upsample(256, 128), upsample(128, 64)]
 
     # Decoder
     decode_blocks = [
@@ -328,14 +314,14 @@ if __name__ == '__main__':
     """
     channel = 1
     num_class = 2
-    # net = unet(channel, n_class)
-    net = unet_res_block(channel, num_class)
+    net = unet(channel, num_class, padding=1)
+    # net = unet_res_block(channel, num_class)
 
     size = 572
     in_data = torch.randint(0, 255, (size, size), dtype=torch.float32) \
         .view((1, channel, size, size))
 
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    net.to(device)
-    in_data = in_data.to(device)
+    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # net.to(device)
+    # in_data = in_data.to(device)
     out_data = net(in_data)
