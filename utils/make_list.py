@@ -6,8 +6,8 @@ from sklearn.utils import shuffle
 def _get_image_label_dir():
     """
     全部是自己手写的代码
-    From mine own
-    github:
+    https://github.com/Ascetics/LaneSegmentation/blob/master/utils/make_list.py
+
     遍历服务器image和label目录，将image和label一一对应
     :return: 生成器（image绝对路径，label绝对路径）
     """
