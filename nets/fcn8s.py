@@ -4,7 +4,7 @@ import torch.nn as nn
 
 class FCN8s(nn.Module):
     """
-    FCN8s模型，backbone为VGG16
+    FCN8s模型，backbone为VGG16，代码全部是自己手写的
     """
 
     def __init__(self, n_class):
@@ -132,7 +132,7 @@ class FCN8s(nn.Module):
 
 
 if __name__ == '__main__':
-    # 不知道怎么训练，不知道loss的含义
+    # 不知道怎么训练，不知道怎么初始化权重，不知道loss的含义
     fcn8s = FCN8s(8)
     in_data = torch.randint(0, 10, (1, 3, 224, 224)).type(torch.float32)
     out_data = fcn8s(in_data)
