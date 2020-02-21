@@ -2,6 +2,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.image as mpimg
 
+"""
+全部是自己写的代码
+https://github.com/Ascetics/LaneSegmentation/blob/master/utils/process_label.py
+"""
 
 def id_to_trainid(label_id):
     """
@@ -92,7 +96,7 @@ def trainid_to_id(label_trainid):
     # id = 3
     label_id[label_trainid == 3] = 217
 
-    # id = 4->5
+    # id = 4->5,因trainId=4都被忽略，5递进为4，转换为id需要处理，后面一样递进
     label_id[label_trainid == 4] = 210
 
     # id = 5->6
@@ -127,7 +131,7 @@ def gray_to_rgb(label_gray):
     # id = 3
     rgb[label_gray == 3] = np.array([220, 220, 0])
 
-    # id = 4->5
+    # id = 4->5,因trainId=4都被忽略，5递进为4，转换为RGBlabel的时候要处理，后面一样递进
     rgb[label_gray == 4] = np.array([128, 64, 128])
 
     # id = 5->6
@@ -147,9 +151,9 @@ if __name__ == '__main__':
     单元测试
     """
     file = '/root/data/LaneSeg/Gray_Label/Label_road02/Label/Record002/Camera 5/170927_064016919_Camera_5_bin.png'
-    img = mpimg.imread(file)
-    img = img * 255
-    img = img.astype(np.uint8)  # 处理成0-255
+    img = mpimg.imread(file)  # 读取一个gray_label图片
+    img = img * 255  # 转换为0-255灰阶
+    img = img.astype(np.uint8)  # 处理成0-255整数
     img_trainid = id_to_trainid(img)
     img_id = trainid_to_id(img_trainid)
     img_rgb = gray_to_rgb(img_trainid)
@@ -158,10 +162,10 @@ if __name__ == '__main__':
     def show(img1, img2, img3, img4):
         fig, ax = plt.subplots(2, 2, figsize=(20, 10))
         ax = ax.flatten()
-        ax[0].imshow(img1, plt.cm.gray)
-        ax[1].imshow(img2, plt.cm.gray)
-        ax[2].imshow(img3, plt.cm.gray)
-        ax[3].imshow(img4)
+        ax[0].imshow(img1, plt.cm.gray)  # 原始label图像，id标注
+        ax[1].imshow(img2, plt.cm.gray)  # train id标注
+        ax[2].imshow(img3, plt.cm.gray)  # 再转换为id标注，但一类别的只转换为一个id
+        ax[3].imshow(img4)  # 再转换为RGB标注
         fig.tight_layout()
         plt.show()
 
