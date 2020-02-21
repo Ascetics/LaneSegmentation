@@ -3,6 +3,12 @@ import matplotlib.image as mpimg
 import numpy as np
 import os
 import torch
+import torch.nn.functional as F
+
+"""
+全部自己写的代码
+https://github.com/Ascetics/LaneSegmentation/blob/master/utils/bilinear_interpolation.py
+"""
 
 
 def bilinear_interpolation(src, dst_size, align_corners=False):
@@ -64,7 +70,13 @@ def bilinear_interpolation(src, dst_size, align_corners=False):
 
 if __name__ == "__main__":
     def unit_test2():
-        image_file = os.path.join(os.getcwd(), 'test.jpg')
+        """
+        读取项目test_data目录下的test.jpg图片 160x240
+        双线性差值后查看缩放到256x256的结果
+        :return:
+        """
+        image_file = os.path.join(os.path.dirname(os.getcwd()), 'test_data')
+        image_file = os.path.join(image_file, 'test.jpg')
         image = mpimg.imread(image_file)
         image_scale = bilinear_interpolation(image, (256, 256))
 
@@ -80,23 +92,3 @@ if __name__ == "__main__":
 
 
     unit_test2()
-
-
-    def unit_test3():
-        src = np.array([[1, 2], [3, 4]])
-        print(src)
-        src = src.reshape((2, 2, 1))
-        dst_size = (4, 4)
-        dst = bilinear_interpolation(src, dst_size)
-        dst = dst.reshape(dst_size)
-        print(dst)
-
-        tsrc = torch.arange(1, 5, dtype=torch.float32).view(1, 1, 2, 2)
-        print(tsrc)
-        tdst = F.interpolate(
-            tsrc,
-            size=(4, 4),
-            mode='bilinear'
-        )
-        print(tdst)
-    # unit_test3()
