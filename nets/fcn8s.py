@@ -5,6 +5,7 @@ import torch.nn as nn
 class FCN8s(nn.Module):
     """
     FCN8s模型，backbone为VGG16，代码全部是自己手写的
+    From mine own
     https://github.com/Ascetics/LaneSegmentation/blob/master/nets/fcn8s.py
     https://github.com/Ascetics/LaneSegmentation/blob/master/nets/fcn8s.txt
     """
