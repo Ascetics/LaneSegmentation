@@ -1,0 +1,34 @@
+spatial 大小
+
+卷积操作            spatial 大小变化 Output = (Input + 2P - K)/S + 1
+池化操作            spatial 大小变化 Output = Input / 2
+转置卷积(无padding) spatial 大小变化 Output = (I-1)*S+K
+
+
+layer   conv/convTrnas  pool    |  spatial output  |  channels
+------------------------------------------------------------------
+input                           |  i            |   3
+------------------------------------------------------------------
+conv1   P=100,K=3,S=1 maxpool   |  (i+198)/2    |   64
+conv2   P=3,K=3,S=1   maxpool   |  (i+198)/4    |   128
+conv3   P=3,K=3,S=1   maxpool   |  (i+198)/8    |   256
+conv4   P=3,K=3,S=1   maxpool   |  (i+198)/16   |   512
+conv5   P=3,K=3,S=1   maxpool   |  (i+198)/32   |   512
+fc6     P=0,K=7,S=1             |  (i+6)/32     |   4096
+fc7     P=0,K=1,S=1             |  (i+6)/32     |   4096
+fc8     P=0,K=1,S=1             |  (i+6)/32     |   n_class
+------------------------------------------------------------------
+up16s   K=4,S=2                 |   (i+38)/16   |   n_class
+up8s    K=4,S=2                 |   (i+54)/8    |   n_class
+output  K=16,S=8                |   i+62        |   n_class
+
+转置卷积 upsample2_conv4 = ((i+6)/32-1)*2+4 = (i+38)/16
+与conv4相差 (i+198)/16 - (i+38)/16 = 10
+因此，与conv4融合，需要将conv4调整channel，再从中间crop，也就是两侧各剪裁5像素，再相加。
+
+转置卷积 upsample2_conv3 = ((i+38)/16-1)*2+4 = (i+54)/8
+与conv3相差 (i+198)/8 - (i+54)/8 = 18
+因此，与conv3融合，需要将conv3调整channel，再从中间crop，也就是两侧各剪裁9像素，再相加。
+
+转置卷积 upsample8 = ((i+54)/8-1)*8+16= i+62
+与输入i相差62 需要将upsample8从中间crop，也就是两侧各剪裁31像素，才能和输入spatial一致。

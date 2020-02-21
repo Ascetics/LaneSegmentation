@@ -13,7 +13,7 @@ class FCN8s(nn.Module):
         :param n_class: 分类个数
         """
         super(FCN8s, self).__init__()
-        # conv1
+        # conv1 第一次下采样，padding=100保证fc6的7x7卷积能正常进行
         self.conv1 = nn.Sequential(
             nn.Conv2d(3, 64, 3, padding=100),
             nn.ReLU(inplace=True),
@@ -22,7 +22,7 @@ class FCN8s(nn.Module):
             nn.MaxPool2d(2, stride=2, ceil_mode=True)  # 1/2
         )
 
-        # conv2
+        # conv2 第二次下采样
         self.conv2 = nn.Sequential(
             nn.Conv2d(64, 128, 3, padding=1),
             nn.ReLU(inplace=True),
@@ -31,7 +31,7 @@ class FCN8s(nn.Module):
             nn.MaxPool2d(2, stride=2, ceil_mode=True)  # 1/4
         )
 
-        # conv3
+        # conv3 第三次下采样
         self.conv3 = nn.Sequential(
             nn.Conv2d(128, 256, 3, padding=1),
             nn.ReLU(inplace=True),
@@ -42,7 +42,7 @@ class FCN8s(nn.Module):
             nn.MaxPool2d(2, stride=2, ceil_mode=True)  # 1/8
         )
 
-        # conv4
+        # conv4 第四次下采样
         self.conv4 = nn.Sequential(
             nn.Conv2d(256, 512, 3, padding=1),
             nn.ReLU(inplace=True),
@@ -53,7 +53,7 @@ class FCN8s(nn.Module):
             nn.MaxPool2d(2, stride=2, ceil_mode=True)  # 1/16
         )
 
-        # conv5
+        # conv5 第五次下采样
         self.conv5 = nn.Sequential(
             nn.Conv2d(512, 512, 3, padding=1),
             nn.ReLU(inplace=True),
@@ -64,7 +64,8 @@ class FCN8s(nn.Module):
             nn.MaxPool2d(2, stride=2, ceil_mode=True)  # 1/32
         )
 
-        # fc6
+        # fc6 将全连接层改为卷积层，7x7卷积
+        # 当输入大于224x224时，输出heatmap
         self.fc6 = nn.Sequential(
             nn.Conv2d(512, 4096, 7),
             nn.ReLU(inplace=True),
@@ -81,16 +82,19 @@ class FCN8s(nn.Module):
         # fc8
         self.fc8 = nn.Conv2d(4096, n_class, 1)
 
-        # upsample 2, fusion with conv4
-        self.upsample2_conv4 = nn.ConvTranspose2d(n_class, n_class, 4, stride=2, bias=False)
+        # 上采样2倍，与conv4融合
+        self.upsample2_conv4 = nn.ConvTranspose2d(n_class, n_class, 4, stride=2,
+                                                  bias=False)
         self.adjust4 = nn.Conv2d(512, n_class, 1)
 
-        # upsample 2, fusion with conv3
-        self.upsample2_conv3 = nn.ConvTranspose2d(n_class, n_class, 4, stride=2, bias=False)
+        # 上采样2倍，与conv3融合
+        self.upsample2_conv3 = nn.ConvTranspose2d(n_class, n_class, 4, stride=2,
+                                                  bias=False)
         self.adjust3 = nn.Conv2d(256, n_class, 1)
 
-        # upsample 8
-        self.upsample8 = nn.ConvTranspose2d(n_class, n_class, 16, stride=8, bias=False)
+        # 上采样8倍
+        self.upsample8 = nn.ConvTranspose2d(n_class, n_class, 16, stride=8,
+                                            bias=False)
         pass
 
     def forward(self, x):
@@ -98,13 +102,13 @@ class FCN8s(nn.Module):
         h = x
 
         # 下采样
-        h = self.conv1(h)
-        h = self.conv2(h)
-        h = self.conv3(h)
+        h = self.conv1(h)  # 1/2
+        h = self.conv2(h)  # 1/4
+        h = self.conv3(h)  # 1/8
         conv3 = h  # 保留conv3，用于第二次特征融合
-        h = self.conv4(h)
+        h = self.conv4(h)  # 1/16
         conv4 = h  # 保留conv4，用于第一次特征融合
-        h = self.conv5(h)
+        h = self.conv5(h)  # 1/32
         h = self.fc6(h)
         h = self.fc7(h)
         h = self.fc8(h)
@@ -113,12 +117,12 @@ class FCN8s(nn.Module):
         h = self.upsample2_conv4(h)  # 上采样2倍
         adjust4 = self.adjust4(conv4)  # 调整conv4的channel，与2倍上采样channel一致
         adjust4 = adjust4[..., 5:5 + h.shape[2], 5:5 + h.shape[3]]  # 剪裁
-        h = h + adjust4  # 第一次特征融合
+        h = h + adjust4  # 第一次与conv4（16s）特征融合
 
         h = self.upsample2_conv3(h)  # 特征融合后上采样2倍
         adjust3 = self.adjust3(conv3)  # 调整conv3的channel，与融合后2倍上采样channel一致
         adjust3 = adjust3[..., 9:9 + h.shape[2], 9:9 + h.shape[3]]  # 剪裁
-        h = h + adjust3  # 第二次特征融合
+        h = h + adjust3  # 第二次与conv3（8s）特征融合
 
         h = self.upsample8(h)  # 融合后上采样8倍
         h = h[..., 31:31 + x.shape[2], 31:31 + x.shape[3]].contiguous()  # 剪裁
@@ -128,6 +132,7 @@ class FCN8s(nn.Module):
 
 
 if __name__ == '__main__':
+    # 不知道怎么训练，不知道loss的含义
     fcn8s = FCN8s(8)
     in_data = torch.randint(0, 10, (1, 3, 224, 224)).type(torch.float32)
     out_data = fcn8s(in_data)
