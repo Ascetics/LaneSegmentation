@@ -17,24 +17,22 @@ class UNetFactory(nn.Module):
         :param decode_blocks: decoder部分，可以替换成ResNet等
         :param n_class: 分类数
         """
-        assert len(encode_blocks) == len(decode_blocks)
-        assert len(decode_blocks) == len(decode_ups)
+        assert len(encode_blocks) == len(decode_blocks)  # 有shortcut的encode和decode数量一致
+        assert len(decode_blocks) == len(decode_ups)  # 上采样和decode数量一致
 
         super(UNetFactory, self).__init__()
-        self.encoder = UNetEncoder(encode_blocks)
-        self.bottom = encode_bottom
-        self.decoder = UNetDecoder(decode_ups, decode_blocks)
-        self.classifier = nn.Conv2d(64, n_class, 1)
+        self.encoder = UNetEncoder(encode_blocks)  # encoder有shortcut
+        self.bottom = encode_bottom  # 最后一个encode没有shortcut，单独列出
+        self.decoder = UNetDecoder(decode_ups, decode_blocks)  # decoder包含上采样和decode
+        self.classifier = nn.Conv2d(64, n_class, 1)  # 最终输出
         pass
 
     def forward(self, x):
-        x, shortcuts = self.encoder(x)
+        x, shortcuts = self.encoder(x)  # encoder生成特征x和shortcut
         if self.bottom is not None:
-            x = self.bottom(x)
-            print('bottom', x.shape)  # for debug
-        x = self.decoder(x, shortcuts)
-        x = self.classifier(x)
-        print('classifier', x.shape)
+            x = self.bottom(x)  # 最后一个encoder不产生shortcut的下采样单独列出
+        x = self.decoder(x, shortcuts)  # decoder
+        x = self.classifier(x)  # 最终分类
         return x
 
     pass
@@ -57,10 +55,9 @@ class UNetEncoder(nn.Module):
         :return: 最终输出x和shortcuts
         """
         shortcuts = []
-        for i, block in enumerate(self.encode_blocks):
-            x = block(x)
-            shortcuts.append(x)
-            print('en', i, x.shape)  # for debug
+        for block in self.encode_blocks:
+            x = block(x)  # 逐个调用encode
+            shortcuts.append(x)  # 记录每个block输出为shortcut
         return x, shortcuts
 
     pass
@@ -73,8 +70,8 @@ class UNetDecoder(nn.Module):
 
     def __init__(self, decode_ups, decode_blocks):
         super(UNetDecoder, self).__init__()
-        self.decode_ups = nn.ModuleList(decode_ups)
-        self.decode_blocks = nn.ModuleList(decode_blocks)
+        self.decode_ups = nn.ModuleList(decode_ups)  # 上采样
+        self.decode_blocks = nn.ModuleList(decode_blocks)  # decode
         pass
 
     @staticmethod
@@ -85,13 +82,14 @@ class UNetDecoder(nn.Module):
         :param shortcut: 就是shortcut
         :return: 剪裁后的x和shortcut
         """
-        _, _, h_x, w_x = x.shape
-        _, _, h_s, w_s = shortcut.shape
-        h, w = min(h_x, h_s), min(w_x, w_s)  # 取最小是
+        _, _, h_x, w_x = x.shape  # 取特征的spatial大小
+        _, _, h_s, w_s = shortcut.shape  # 取shortcut的spatial大小
+        h, w = min(h_x, h_s), min(w_x, w_s)  # 取最小spatial
         hc_x, wc_x = (h_x - h) // 2, (w_x - w) // 2  # x要剪裁掉的值
         hc_s, wc_s = (h_s - h) // 2, (w_s - w) // 2  # shortcut要剪裁掉的值
-        return x[..., hc_x:hc_x + h, wc_x: wc_x + w], \
-               shortcut[..., hc_s:hc_s + h, wc_s:wc_s + w]
+        x = x[..., hc_x:hc_x + h, wc_x: wc_x + w]  # center crop
+        shortcut = shortcut[..., hc_s:hc_s + h, wc_s:wc_s + w]  # center crop
+        return x, shortcut
 
     def forward(self, x, shortcuts):
         """
@@ -100,13 +98,12 @@ class UNetDecoder(nn.Module):
         :param shortcuts: Encoder生成的shortcuts
         :return: Decoder结果
         """
-        for i, (up, block) in enumerate(
-                zip(self.decode_ups, self.decode_blocks)):
+        z = zip(self.decode_ups, self.decode_blocks)  # 上采样和decode一一对应
+        for i, (up, block) in enumerate(z):
             x = up(x)  # 上采样
-            x, s = self._crop(x, shortcuts[-(i + 1)])  # 剪裁
+            x, s = self._crop(x, shortcuts[-(i + 1)])  # 剪裁，shortcut顺序-1，-2，-3,-4，后出现的先融合
             x = torch.cat((x, s), dim=1)  # concatenate特征融合
-            x = block(x)
-            print('de', i, x.shape)  # for debug
+            x = block(x)  # decode
         return x
 
     pass
@@ -114,7 +111,7 @@ class UNetDecoder(nn.Module):
 
 def upconv(in_channels, out_channels):
     """
-    论文中的上采样，用转置卷积实现
+    论文中的上采样，用转置卷积实现，上次采样2倍
     :return:
     """
     return nn.ConvTranspose2d(in_channels, out_channels, 2, stride=2)
@@ -122,7 +119,7 @@ def upconv(in_channels, out_channels):
 
 def upsample(in_channels, out_channels):
     """
-    论文中的上采样，用双线性差值实现
+    论文中的上采样，用双线性差值实现，上采样2倍，再调整channel数
     :return:
     """
     return nn.Sequential(
@@ -135,15 +132,23 @@ def upsample(in_channels, out_channels):
 
 class _UNetEncodeBlock(nn.Module):
     def __init__(self, in_channels, out_channels, maxpool=False, padding=0):
+        """
+        论文中的encode block，每个block有2个3x3卷积
+        两个3x3卷积默认不加padding，后面有bn所以bias=False
+        :param in_channels: 输入channels
+        :param out_channels: 输出channels
+        :param maxpool: 第一个block没有maxpool，其余的block有maxpool
+        :param padding: 论文没有padding
+        """
         super(_UNetEncodeBlock, self).__init__()
         self.maxpool = None
         if maxpool:
-            self.maxpool = nn.MaxPool2d(2, stride=2, ceil_mode=True)
+            self.maxpool = nn.MaxPool2d(2, stride=2, ceil_mode=True)  # 是否下采样
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=padding),
+            nn.Conv2d(in_channels, out_channels, 3, padding=padding, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=padding),
+            nn.Conv2d(out_channels, out_channels, 3, padding=padding, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
@@ -160,12 +165,19 @@ class _UNetEncodeBlock(nn.Module):
 
 class _UNetDecodeBlock(nn.Module):
     def __init__(self, in_channels, out_channels, padding=0):
+        """
+        论文中的decode block，不包括上采样和特征融合，每个block有2个3x3卷积
+        两个3x3卷积默认不加padding，后面有bn所以bias=False
+        :param in_channels: 输入channels
+        :param out_channels: 输出channels
+        :param padding: 论文不加padding
+        """
         super(_UNetDecodeBlock, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=padding),
+            nn.Conv2d(in_channels, out_channels, 3, padding=padding, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=padding),
+            nn.Conv2d(out_channels, out_channels, 3, padding=padding, bias=False),
             nn.BatchNorm2d(out_channels),
             nn.ReLU(inplace=True),
         )
@@ -190,28 +202,28 @@ def unet(in_channels, n_class, upmode='upconv', padding=0):
 
     # Encoder
     encode_blocks = [
-        _UNetEncodeBlock(in_channels, 64, padding=padding),
-        _UNetEncodeBlock(64, 128, maxpool=True, padding=padding),
-        _UNetEncodeBlock(128, 256, maxpool=True, padding=padding),
-        _UNetEncodeBlock(256, 512, maxpool=True, padding=padding),
+        _UNetEncodeBlock(in_channels, 64, padding=padding),  # 第一个encode没有下采样，有shortcut
+        _UNetEncodeBlock(64, 128, padding=padding, maxpool=True),  # 第二个encode有下采样，有shortcut
+        _UNetEncodeBlock(128, 256, padding=padding, maxpool=True),  # 第三个encode有下采样，有shortcut
+        _UNetEncodeBlock(256, 512, padding=padding, maxpool=True),  # 第四个encode有下采样，有shortcut
     ]
-    encode_bottom = _UNetEncodeBlock(512, 1024, maxpool=True, padding=padding)
+    encode_bottom = _UNetEncodeBlock(512, 1024, maxpool=True, padding=padding)  # 第五个encode有下采样，没有shortcut
 
     # Upsample
-    decode_ups = None
-    if upmode == 'upconv':
+    decode_ups = None  # 上采样可以二选一
+    if upmode == 'upconv':  # 转置卷积
         decode_ups = [upconv(1024, 512), upconv(512, 256),
                       upconv(256, 128), upconv(128, 64)]
-    elif upmode == 'upsample':
+    elif upmode == 'upsample':  # 双线性差值
         decode_ups = [upsample(1024, 512), upsample(512, 256),
                       upsample(256, 128), upsample(128, 64)]
 
     # Decoder
     decode_blocks = [
-        _UNetDecodeBlock(1024, 512, padding=padding),
-        _UNetDecodeBlock(512, 256, padding=padding),
-        _UNetDecodeBlock(256, 128, padding=padding),
-        _UNetDecodeBlock(128, 64, padding=padding),
+        _UNetDecodeBlock(1024, 512, padding=padding),  # 第一个decode
+        _UNetDecodeBlock(512, 256, padding=padding),  # 第二个decode
+        _UNetDecodeBlock(256, 128, padding=padding),  # 第三个decode
+        _UNetDecodeBlock(128, 64, padding=padding),  # 第四个decode
     ]
     return UNetFactory(encode_blocks, encode_bottom, decode_ups, decode_blocks,
                        n_class)
@@ -315,13 +327,10 @@ if __name__ == '__main__':
     channel = 1
     num_class = 2
     net = unet(channel, num_class, padding=1)
-    # net = unet_res_block(channel, num_class)
+    print(net)
 
-    size = 572
-    in_data = torch.randint(0, 255, (size, size), dtype=torch.float32) \
-        .view((1, channel, size, size))
+    # size = 572
+    # in_data = torch.randint(0, 255, (size, size), dtype=torch.float32)
+    # in_data = in_data.view((1, channel, size, size))
 
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # net.to(device)
-    # in_data = in_data.to(device)
-    out_data = net(in_data)
+
