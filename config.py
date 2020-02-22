@@ -7,6 +7,8 @@ class Config(object):
     """
     # 数据集
     DATASETS_ROOT = '/root/private/torch_datasets'  # 数据集根目录
+    TRANSFORM_NORM_MEAN = [0.485, 0.456, 0.406]  # ImageNet统计的mean
+    TRANSFORM_NORM_STD = [0.229, 0.224, 0.225]  # ImageNet统计的std
 
     # 训练结果
     WEIGHT_SAVE_PATH = '/root/private/LaneSegmentation/weight'  # weight保存路径
