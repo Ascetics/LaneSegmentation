@@ -25,7 +25,7 @@ def _get_image_label_dir():
             continue
         for record in os.listdir(image_road):  # 遍历road下所有目录
             image_record = os.path.join(image_road, record)  # image的 Record001-Record007
-            label_record = os.path.join(label_road, 'Label/' + record)  # lable的Record001-Record007，比image多了一层Label
+            label_record = os.path.join(label_road, 'Label/' + record)  # label的Record001-Record007，比image多了一层Label
             if not (os.path.isdir(image_record) and
                     os.path.exists(label_record) and
                     os.path.isdir(label_record)):
@@ -52,7 +52,7 @@ def _get_image_label_dir():
     pass
 
 
-def _make_data_list(save_path):
+def make_data_list(save_path):
     """
     打乱顺序，生成data_list的csv文件。
     :param save_path: 保存的路径
@@ -63,7 +63,7 @@ def _make_data_list(save_path):
 
     df = pd.DataFrame(
         data=abspaths,  # csv文件数据，每个元素是一条数据
-        columns=['image', 'lable']  # 两列 image、lable
+        columns=['image', 'label']  # 两列 image、label
     )
 
     df_shuffle = shuffle(df)  # 随机打乱顺序
@@ -96,7 +96,7 @@ if __name__ == '__main__':
 
     save_path = os.path.join(os.pardir, 'data_list')  # 保存全部数据的路径
     save_path = os.path.join(save_path, 'all.csv')  # 保存全部数据
-    _make_data_list(save_path)  # 生成csv文件
+    make_data_list(save_path)  # 生成csv文件
 
 
     def test__get_image_label_dir():
