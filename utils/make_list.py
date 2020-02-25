@@ -1,6 +1,7 @@
 import os
 import pandas as pd
 from sklearn.utils import shuffle
+from config import Config
 
 
 def _get_image_label_dir():
@@ -12,8 +13,8 @@ def _get_image_label_dir():
     :return: 生成器（image绝对路径，label绝对路径）
     """
     data_err = 'data error. check!'
-    image_base = os.path.join('/root/data/LaneSeg/Image_Data')  # 服务器上Image根目录
-    label_base = os.path.join('/root/data/LaneSeg/Gray_Label')  # 服务器上Label根目录
+    image_base = os.path.join(Config.IMAGE_BASE)  # 服务器上Image根目录
+    label_base = os.path.join(Config.LABEL_BASE)  # 服务器上Label根目录
 
     for road in os.listdir(image_base):  # 遍历根目录下所有目录
         image_road = os.path.join(image_base, road)  # image的Road02-Road04
@@ -52,7 +53,7 @@ def _get_image_label_dir():
     pass
 
 
-def make_data_list(save_path):
+def make_data_list(train_path, valid_path, test_path, train_rate=0.7, valid_rate=0.2):
     """
     打乱顺序，生成data_list的csv文件。
     :param save_path: 保存的路径
@@ -67,11 +68,10 @@ def make_data_list(save_path):
     )
 
     df_shuffle = shuffle(df)  # 随机打乱顺序
-    df_shuffle.to_csv(save_path, index=False)  # 不保存行索引（行号）
 
     # 70%做训练，20%做推断，剩余10%做测试
-    train_size = int(df_shuffle.shape[0] * 0.7)
-    valid_size = int(df_shuffle.shape[0] * 0.2)
+    train_size = int(df_shuffle.shape[0] * train_rate)
+    valid_size = int(df_shuffle.shape[0] * valid_rate)
 
     print('total: {:d} | train: {:d} | val: {:d} | test: {:d}'.format(
         df_shuffle.shape[0], train_size, valid_size,
@@ -81,22 +81,20 @@ def make_data_list(save_path):
     df_valid = df_shuffle[train_size: train_size + valid_size]  # valid数据集
     df_test = df_shuffle[train_size + valid_size:]  # test数据集
 
-    df_train.to_csv(os.path.join(os.path.dirname(save_path), 'train.csv'),  # 保存trian.csv文件
-                    index=False)
-    df_valid.to_csv(os.path.join(os.path.dirname(save_path), 'valid.csv'),  # 保存valid.csv文件
-                    index=False)
-    df_test.to_csv(os.path.join(os.path.dirname(save_path), 'test.csv'),  # 保存test.csv文件
-                   index=False)
+    df_train.to_csv(os.path.join(train_path), index=False)  # 保存train.csv文件
+    df_valid.to_csv(os.path.join(valid_path), index=False)  # 保存valid.csv文件
+    df_test.to_csv(os.path.join(test_path), index=False)  # 保存test.csv文件
 
 
 if __name__ == '__main__':
     """
     单元测试
     """
-
-    save_path = os.path.join(os.pardir, 'data_list')  # 保存全部数据的路径
-    save_path = os.path.join(save_path, 'all.csv')  # 保存全部数据
-    make_data_list(save_path)  # 生成csv文件
+    make_data_list(train_path=Config.DATALIST_TRAIN,
+                   valid_path=Config.DATALIST_VALID,
+                   test_path=Config.DATALIST_TEST,
+                   train_rate=Config.TRAIN_RATE,
+                   valid_rate=Config.VALID_RATE)  # 生成csv文件
 
 
     def test__get_image_label_dir():
