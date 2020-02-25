@@ -4,7 +4,7 @@ import torchvision.transforms as tsfs
 import pandas as pd
 import matplotlib.image as mpimg
 from config import Config
-from process_label import id_to_trainid
+from utils.process_label import id_to_trainid
 
 
 class DatasetReader(data.IterableDataset):
