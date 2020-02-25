@@ -43,17 +43,17 @@ class Config(object):
         'train': tsfs.Compose([
             tsfs.Resize(size=224),  # 缩放
             tsfs.ToTensor(),  # 转换成Tensor
-            tsfs.Normalize(LABEL_NORM_MEAN, LABEL_NORM_STD),  # 归一化
+            # trainId不进行归一化
         ]),
         'valid': tsfs.Compose([
             tsfs.Resize(size=224),  # 缩放
             tsfs.ToTensor(),  # 转换成Tensor
-            tsfs.Normalize(LABEL_NORM_MEAN, LABEL_NORM_STD),  # 归一化
+            # trainId不进行归一化
         ]),
         'test': tsfs.Compose([
             tsfs.Resize(size=224),  # 测试一般不进行缩放
             tsfs.ToTensor(),  # 转换成Tensor
-            tsfs.Normalize(LABEL_NORM_MEAN, LABEL_NORM_STD),  # 归一化
+            # trainId不进行归一化
         ]),
     }
 
