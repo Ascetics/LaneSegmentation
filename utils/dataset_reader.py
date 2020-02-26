@@ -56,6 +56,9 @@ class DatasetReader(data.IterableDataset):
             label = self.target_transform(label)  # label更多的转换
         return image, label
 
+    def __len__(self):
+        return len(self._data_frame)
+
     pass
 
 
