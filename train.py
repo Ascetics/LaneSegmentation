@@ -8,7 +8,8 @@ from torch.autograd import Variable
 from datetime import datetime
 from nets.fcn8s import FCN8s
 from nets.unet import unet
-from utils.dataset_reader import DatasetReader
+from utils.laneseg_dataset import LaneSegDataset
+from utils.loss_func import MySoftmaxCrossEntropyLoss, FocalLoss, DiceLoss, SoftIoULoss, MulticlassDiceLoss
 from config import Config
 
 
@@ -57,7 +58,7 @@ def epoch_timer(func):
     return timer
 
 
-def confusion_matrix(pred, label, n_class):
+def get_confusion_matrix(pred, label, n_class):
     """
     计算一张图像的混淆矩阵
     cm = torch.bincount(n_class * label[mask] + pred[mask], minlength=n_class ** 2)
@@ -102,74 +103,69 @@ def get_miou(cm, n_class):
 
 
 @epoch_timer  # 记录一个epoch时间并打印
-def epoch_train(net, loss_func, optimizer, train_data, n_class):
+def epoch_train(net, loss_func, optimizer, dataset, n_class):
     """
     一个epoch训练过程，分成两个阶段：先训练，再验证
     :param net: 使用的模型
     :param loss_func: loss函数
     :param optimizer: 优化器
-    :param train_data: 训练集
+    :param dataset: 训练集
     :param valid_data: 验证集
     :return: 一个epoch的训练loss、训练acc、验证loss、验证acc
     """
-    device = Config.DEVICE  # 使用GPU，没有GPU就用CPU
-    net.to(device)  # 模型装入GPU
-    # loss_func.to(device)  # loss函数装入CPU
-
-    """训练"""
-    train_loss = 0.  # 一个epoch训练的loss
-    train_cm = torch.zeros((n_class, n_class)).to(device)  # 一个epoch的混淆矩阵
     net.train()  # 训练
-    for i, (train_image, train_label) in enumerate(train_data):
-        train_image = Variable(train_image.to(device))  # 一个训练batch image
-        train_label = Variable(train_label.to(device))  # 一个训练batch label
 
-        train_output = net(train_image)  # 前向传播，计算一个训练batch的output
-        loss = loss_func(train_output, train_label)  # 计算一个训练batch的loss
+    total_loss = 0.  # 一个epoch训练的loss
+    confusion_matrix = torch.zeros((n_class, n_class)).to(Config.DEVICE)  # 一个epoch的混淆矩阵
+
+    for i, (im, lb) in enumerate(dataset):
+        im = im.to(Config.DEVICE)  # 一个训练batch image
+        lb = lb.to(Config.DEVICE)  # 一个训练batch label
+
         optimizer.zero_grad()  # 清空梯度
+
+        output = net(im)  # 前向传播，计算一个训练batch的output
+        loss = loss_func(output, lb.squeeze(1).type(torch.int64))  # 计算一个训练batch的loss
+        total_loss += loss.detach().item()  # 累加训练batch的loss
+
         loss.backward()  # 反向传播
-        optimizer.step()  # 步进
+        optimizer.step()  # 优化器迭代
 
-        train_loss += loss.detach().cpu().numpy()  # 累加训练batch的loss
-
-        train_pred = F.softmax(train_output, dim=1)  # softmax
-        train_pred = train_pred.detach()  #
-        train_pred = torch.argmax(train_pred, dim=1)  # 将输出转化为dense prediction，减少一个C维度
-        train_label = train_label.detach().squeeze(1)  # label也减少一个C维度
-        train_cm += confusion_matrix(train_pred, train_label, n_class)  # 计算混淆矩阵并累加
+        pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction，减少一个C维度
+        lb = lb.squeeze(1)  # label也减少一个C维度
+        confusion_matrix += get_confusion_matrix(pred, lb, n_class)  # 计算混淆矩阵并累加
         pass
-    train_loss /= len(train_data)  # 求取一个epoch训练的loss
-    train_miou = get_miou(train_cm, n_class)
+    total_loss /= len(dataset)  # 求取一个epoch训练的loss
+    mean_iou = get_miou(confusion_matrix, n_class)
 
-    return train_loss, train_miou
+    return total_loss, mean_iou
 
 
 @epoch_timer
-def epoch_valid(net, loss_func, valid_data, n_class):
-    """验证"""
-    device = Config.DEVICE  # 使用GPU，没有GPU就用CPU
-    valid_loss = 0.  # 一个epoch验证的loss和正确率acc
-    valid_cm = torch.zeros((n_class, n_class)).to(device)
+def epoch_valid(net, loss_func, dataset, n_class):
     net.eval()  # 验证
-    for i, (valid_image, valid_label) in enumerate(valid_data):
-        valid_image = Variable(valid_image.to(device))  # 一个验证batch image
-        valid_label = Variable(valid_label.to(device))  # 一个验证batch label
 
-        valid_output = net(valid_image)  # 前项传播，计算一个验证batch的output
-        loss = loss_func(valid_output, valid_label)  # 计算一个验证batch的loss
+    total_loss = 0.  # 一个epoch验证的loss和正确率acc
+    confusion_matrix = torch.zeros((n_class, n_class)).to(Config.DEVICE)
+
+    for i, (im, lb) in enumerate(dataset):
+        im = im.to(Config.DEVICE)  # 一个验证batch image
+        lb = lb.to(Config.DEVICE)  # 一个验证batch label
+
+        output = net(im)  # 前项传播，计算一个验证batch的output
+        loss = loss_func(output, lb.squeeze(1).type(torch.int64))  # 计算一个验证batch的loss
+        total_loss += loss.detach().item()  # 累加验证batch的loss
+
         # 验证的时候不进行反向传播
-
-        valid_loss += loss.detach().cpu().numpy()  # 累加验证batch的loss
-
-        valid_pred = F.softmax(valid_output, dim=1)  # softmax
-        valid_pred = valid_pred.detach()  # 从cuda读取模型输出到cpu转换为numpy
-        valid_pred = torch.argmax(valid_pred, dim=1)  # 将输出转化为dense prediction
-        valid_label = valid_label.detach().squeeze(1)  # label转换为numpy
-        valid_cm += confusion_matrix(valid_pred, valid_label, n_class)  # 计算混淆矩阵并累加
+        pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction
+        lb = lb.squeeze(1)  # label转换为numpy
+        temp = get_confusion_matrix(pred, lb, n_class)
+        # print(i, temp)
+        confusion_matrix += temp  # 计算混淆矩阵并累加
         pass
-    valid_loss /= len(valid_data)  # 求取一个epoch验证的loss
-    valid_miou = get_miou(valid_cm, n_class)
-    return valid_loss, valid_miou
+    total_loss /= len(dataset)  # 求取一个epoch验证的loss
+    mean_iou = get_miou(confusion_matrix, n_class)
+    return total_loss, mean_iou
 
 
 def save_checkpoint(net, name, epoch):
@@ -212,7 +208,7 @@ def train(net, loss_func, optimizer, train_data, valid_data, n_class, name, epoc
         valid_str = 'Valid Loss: {:.4f} | Valid mIoU: {:.4f}'
         print(valid_str.format(v_loss, v_miou))
 
-        save_checkpoint(net, name, e)  # 每个epoch的参数都保存
+        # save_checkpoint(net, name, e)  # 每个epoch的参数都保存
         pass
     pass
 
@@ -224,15 +220,15 @@ if __name__ == '__main__':
     单元测试
     """
     image_datasets = {
-        'train': DatasetReader(data_list=Config.DATALIST_TRAIN,
-                               image_transform=Config.IMAGE_TRANSFORMS['train'],
-                               label_transform=Config.LABEL_TRANSFORMS['train']),
-        'valid': DatasetReader(data_list=Config.DATALIST_VALID,
-                               image_transform=Config.IMAGE_TRANSFORMS['valid'],
-                               label_transform=Config.LABEL_TRANSFORMS['valid']),
-        'test': DatasetReader(data_list=Config.DATALIST_TEST,
-                              image_transform=Config.IMAGE_TRANSFORMS['test'],
-                              label_transform=Config.LABEL_TRANSFORMS['test']),
+        'train': LaneSegDataset(data_list=Config.DATALIST_TRAIN,
+                                image_transform=Config.IMAGE_TRANSFORMS['train'],
+                                label_transform=Config.LABEL_TRANSFORMS['train']),
+        'valid': LaneSegDataset(data_list=Config.DATALIST_VALID,
+                                image_transform=Config.IMAGE_TRANSFORMS['valid'],
+                                label_transform=Config.LABEL_TRANSFORMS['valid']),
+        'test': LaneSegDataset(data_list=Config.DATALIST_TEST,
+                               image_transform=Config.IMAGE_TRANSFORMS['test'],
+                               label_transform=Config.LABEL_TRANSFORMS['test']),
     }
 
     data_loaders = {
@@ -245,12 +241,20 @@ if __name__ == '__main__':
     }
 
     num_class = 8
-    model = FCN8s(n_class=num_class)
-    # model = unet(3, 8, upmode='upsample', padding=31)
-    print(model)
-    custom_loss_func = cross_entropy2d  # loss函数
-    custom_optimizer = torch.optim.Adam(model.parameters())  # 将模型参数装入优化器
+    # custom_model = FCN8s(n_class=num_class)
+    custom_model = unet(3, num_class, upmode='upsample', padding=1)
+    print(custom_model)
+    custom_model.to(Config.DEVICE)
 
-    train(model, custom_loss_func, custom_optimizer,
+    # custom_loss_func = cross_entropy2d  # loss函数
+    # custom_loss_func = MySoftmaxCrossEntropyLoss(num_class)
+    # custom_loss_func = SoftIoULoss(num_class)
+    custom_loss_func = MulticlassDiceLoss()
+    custom_loss_func.to(Config.DEVICE)
+
+    custom_optimizer = torch.optim.Adam(params=custom_model.parameters(),
+                                        weight_decay=Config.WEIGHT_DECAY)  # 将模型参数装入优化器
+
+    train(custom_model, custom_loss_func, custom_optimizer,
           data_loaders['train'], data_loaders['valid'],
-          n_class=8, name='fcn8s')  # 开始训（炼）练（丹）
+          n_class=num_class, name='fcn8s', epochs=2)  # 开始训（炼）练（丹）
