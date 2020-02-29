@@ -6,14 +6,19 @@ class Config(object):
     """
     配置类
     """
+    # 设备   ####################################################################
+    # DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # DEVICE = torch.device('cpu')
+    DEVICE = torch.device('cuda:7')
+
     # 数据集 ####################################################################
     DATASETS_ROOT = '/root/private/torch_datasets'  # Pytorch数据集根目录
 
     IMAGE_BASE = '/root/data/LaneSeg/Image_Data'  # image文件的根目录
     LABEL_BASE = '/root/data/LaneSeg/Gray_Label'  # label文件的根目录
 
-    TRAIN_RATE = 0.0001  # 数据集划分，训练集占整个数据集的比例
-    VALID_RATE = 0.0001  # 数据集划分，验证集占整个数据集的比例
+    TRAIN_RATE = 0.025  # 数据集划分，训练集占整个数据集的比例
+    VALID_RATE = 0.003  # 数据集划分，验证集占整个数据集的比例
 
     DATALIST_TRAIN = '/root/private/LaneSegmentation/data_list/train.csv'  # 车道线分割训练集csv文件路径
     DATALIST_VALID = '/root/private/LaneSegmentation/data_list/valid.csv'  # 车道线分割验证集csv文件路径
@@ -25,6 +30,7 @@ class Config(object):
     # 超参数 ####################################################################
     TRAIN_BATCH_SIZE = 1  # batch大小
     LEARN_RATE = 0.1  # 学习率
+    WEIGHT_DECAY = 0.0001
     EPOCHS = 10  # 训练次数
 
     # 数据处理 ####################################################################
@@ -38,17 +44,17 @@ class Config(object):
         'train': tsfs.Compose([
             tsfs.Resize(size=224),  # 缩放
             tsfs.ToTensor(),  # 转换成Tensor
-            tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
+            # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
         ]),
         'valid': tsfs.Compose([
             tsfs.Resize(size=224),  # 缩放
             tsfs.ToTensor(),  # 转换成Tensor
-            tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
+            # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
         ]),
         'test': tsfs.Compose([
             tsfs.Resize(size=224),  # 测试一般不进行缩放
             tsfs.ToTensor(),  # 转换成Tensor
-            tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
+            # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
         ]),
     }
 
@@ -71,8 +77,4 @@ class Config(object):
         ]),
     }
 
-    # 设备   ####################################################################
-    # DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # DEVICE = torch.device('cpu')
-    DEVICE = torch.device('cuda:5')
     pass

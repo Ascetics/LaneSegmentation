@@ -205,33 +205,24 @@ class DiceLoss(nn.Module):
 
 
 class MulticlassDiceLoss(nn.Module):
-    """
-    requires one hot encoded target. Applies DiceLoss on each class iteratively.
-    requires input.shape[0:1] and target.shape[0:1] to be (N, C) where N is
-      batch size and C is number of classes
-    """
-
     def __init__(self):
         super(MulticlassDiceLoss, self).__init__()
 
     def forward(self, input, target, weights=None):
 
-        C = input.shape[1]
-        target = self.to_one_hot(target, C)
-
-        # if weights is None:
-        # 	weights = torch.ones(C) #uniform weights for all classes
+        n_class = input.shape[1]
+        target = self.to_one_hot(target, n_class)
 
         dice = DiceLoss()
-        totalLoss = 0
+        total_loss = 0
 
-        for i in range(C):
-            diceLoss = dice(input[:, i], target[:, i])
+        for i in range(n_class):
+            dice_loss = dice(input[:, i], target[:, i])
             if weights is not None:
-                diceLoss *= weights[i]
-            totalLoss += diceLoss
+                dice_loss *= weights[i]
+            total_loss += dice_loss
 
-        return totalLoss
+        return total_loss
 
     @staticmethod
     def to_one_hot(tensor, n_classes):
