@@ -77,15 +77,12 @@ if __name__ == '__main__':
 
     # 逐个读取，查看读取的内容，验证dataloader可用
     for i, (im, lb) in enumerate(data_loaders['train']):
-        print(i)
-        pass
-    for i, (im, lb) in enumerate(data_loaders['train']):
         s = input('>>>')
         if s == 'q':
             break
         print(i)
         print(type(im), im.shape)
-        print(type(lb), lb.shape)
+        print(type(lb), lb.shape, np.bincount(lb.flatten()))
         a = lb.type(torch.int).sum()
         if a > 0:
             print('error')
