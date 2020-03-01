@@ -17,8 +17,8 @@ class Config(object):
     IMAGE_BASE = '/root/data/LaneSeg/Image_Data'  # image文件的根目录
     LABEL_BASE = '/root/data/LaneSeg/Gray_Label'  # label文件的根目录
 
-    TRAIN_RATE = 0.025  # 数据集划分，训练集占整个数据集的比例
-    VALID_RATE = 0.003  # 数据集划分，验证集占整个数据集的比例
+    TRAIN_RATE = 0.07  # 数据集划分，训练集占整个数据集的比例
+    VALID_RATE = 0.02  # 数据集划分，验证集占整个数据集的比例
 
     DATALIST_TRAIN = '/root/private/LaneSegmentation/data_list/train.csv'  # 车道线分割训练集csv文件路径
     DATALIST_VALID = '/root/private/LaneSegmentation/data_list/valid.csv'  # 车道线分割验证集csv文件路径
@@ -42,17 +42,17 @@ class Config(object):
     # 训练、验证、测试集的image的transforms，用法Config.IMAGE_TRANSFORMS['train']等
     IMAGE_TRANSFORMS = {
         'train': tsfs.Compose([
-            tsfs.Resize(size=224),  # 缩放
+            tsfs.Resize(size=448),  # 缩放
             tsfs.ToTensor(),  # 转换成Tensor
             # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
         ]),
         'valid': tsfs.Compose([
-            tsfs.Resize(size=224),  # 缩放
+            tsfs.Resize(size=448),  # 缩放
             tsfs.ToTensor(),  # 转换成Tensor
             # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
         ]),
         'test': tsfs.Compose([
-            tsfs.Resize(size=224),  # 测试一般不进行缩放
+            tsfs.Resize(size=448),  # 测试一般不进行缩放
             tsfs.ToTensor(),  # 转换成Tensor
             # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
         ]),
@@ -61,17 +61,17 @@ class Config(object):
     # 训练、验证、测试集的label的transforms，用法Config.LABEL_TRANSFORMS['train']等
     LABEL_TRANSFORMS = {
         'train': tsfs.Compose([
-            tsfs.Resize(size=224),  # 缩放
+            tsfs.Resize(size=448),  # 缩放
             tsfs.ToTensor(),  # 转换成Tensor
             # trainId不进行归一化
         ]),
         'valid': tsfs.Compose([
-            tsfs.Resize(size=224),  # 缩放
+            tsfs.Resize(size=448),  # 缩放
             tsfs.ToTensor(),  # 转换成Tensor
             # trainId不进行归一化
         ]),
         'test': tsfs.Compose([
-            tsfs.Resize(size=224),  # 测试一般不进行缩放
+            tsfs.Resize(size=448),  # 测试一般不进行缩放
             tsfs.ToTensor(),  # 转换成Tensor
             # trainId不进行归一化
         ]),

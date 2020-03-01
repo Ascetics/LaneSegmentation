@@ -98,6 +98,12 @@ class FCN8s(nn.Module):
         # 上采样8倍
         self.upsample8 = nn.ConvTranspose2d(n_class, n_class, 16, stride=8,
                                             bias=False)
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
         pass
 
     def forward(self, x):

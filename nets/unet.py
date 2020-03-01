@@ -1,78 +1,86 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torchvision.models import resnet18, resnet34, resnet50, resnet101, resnet152
+from config import Config
 
 
-class UNetFactory(nn.Module):
+def unet_conv(in_channels, out_channels, padding=1):
     """
-    UNet网络工厂
+    UNet网络中block的基本实现，encode和decode类似，都是2个3x3卷积。
+    与论文中的实现不同的是，默认加了padding都是same卷积
+    :param in_channels: 输入channels
+    :param out_channels: 输出channels
+    :param padding: 默认加padding
+    :return:
     """
-
-    def __init__(self, encode_blocks, encode_bottom,
-                 decode_ups, decode_blocks, n_class):
-        """
-        生成Unet网络
-        :param encode_blocks: encoder的一部分，blocks可以替换成ResNet等，每个block产生一个shortcut
-        :param encode_bottom: encoder的一部分，位于UNet底部，可以替换成ResNet等，不产生shortcut
-        :param decode_ups: 上采样块，可以用转置卷积、双线性差值
-        :param decode_blocks: decoder部分，可以替换成ResNet等
-        :param n_class: 分类数
-        """
-        assert len(encode_blocks) == len(decode_blocks)  # 有shortcut的encode和decode数量一致
-        assert len(decode_blocks) == len(decode_ups)  # 上采样和decode数量一致
-
-        super(UNetFactory, self).__init__()
-        self.encoder = UNetEncoder(encode_blocks)  # encoder有shortcut
-        self.bottom = encode_bottom  # 最后一个encode没有shortcut，单独列出
-        self.decoder = UNetDecoder(decode_ups, decode_blocks)  # decoder包含上采样和decode
-        self.classifier = nn.Conv2d(64, n_class, 1)  # 最终输出
-        pass
-
-    def forward(self, x):
-        x, shortcuts = self.encoder(x)  # encoder生成特征x和shortcut
-        if self.bottom is not None:
-            x = self.bottom(x)  # 最后一个encoder不产生shortcut的下采样单独列出
-        x = self.decoder(x, shortcuts)  # decoder
-        x = self.classifier(x)  # 最终分类
-        return x
-
-    pass
+    return nn.Sequential(nn.Conv2d(in_channels, out_channels, 3, padding=padding, bias=False),
+                         # 第一个3x3卷积，后面接bn，bias=False
+                         nn.BatchNorm2d(out_channels),  # bn
+                         nn.ReLU(inplace=True),  # relu激活函数
+                         nn.Conv2d(out_channels, out_channels, 3, padding=padding, bias=False),
+                         # 第二个3x3卷积，后面接bn，bias=False
+                         nn.BatchNorm2d(out_channels),  # bn
+                         nn.ReLU(inplace=True))  # relu激活函数
 
 
-class UNetEncoder(nn.Module):
-    """
-    Encoder处理
-    """
-
+class _UNetEncoder(nn.Module):
     def __init__(self, encode_blocks):
-        super(UNetEncoder, self).__init__()
-        self.encode_blocks = nn.ModuleList(encode_blocks)
+        """
+        encoder部分。
+        第一个encode block没有下采样。
+        最后一个encode block没有shortcut。
+        :param encode_blocks: encode每个层的block
+        """
+        super(_UNetEncoder, self).__init__()
+        self.encoder = nn.ModuleList(encode_blocks)  # module保存所有的encode block
         pass
 
     def forward(self, x):
-        """
-        Encoder逐个block调用
-        :param x:
-        :return: 最终输出x和shortcuts
-        """
-        shortcuts = []
-        for block in self.encode_blocks:
-            x = block(x)  # 逐个调用encode
-            shortcuts.append(x)  # 记录每个block输出为shortcut
-        return x, shortcuts
+        shortcuts = []  # 保存所有的shortcut
+        for encode in self.encoder:
+            x = encode(x)  # 每个encode block的输出都保存
+            shortcuts.append(x)
+        return x, shortcuts[:-1]  # 返回提取的特征x，和所有shortcut。最后一个block输出不作为shortcut。
 
     pass
 
 
-class UNetDecoder(nn.Module):
-    """
-    Decoder处理
-    """
+class _UNetDecoder(nn.Module):
+    def __init__(self, encode_out_channels, n_class):
+        """
+        decoder部分。
+        decode block比encode block少一个。
+        所有的decode block都是上采样up -> 和shortcut拼接 -> decode操作。
+        decode操作都是类似的unet_conv，是两个3x3卷积。与论文实现不同的是默认加padding使用same卷积。
+        最后，增加一个1x1卷积，用于最后的分类。
+        :param encode_out_channels: 列表类型，每个encode block的输出channels，按照encode block的顺序。
+        :param n_class: n种分类。
+        """
+        super(_UNetDecoder, self).__init__()
+        self.ups = nn.ModuleList()  # 上采样
+        self.decodes = nn.ModuleList()  # decode
+        in_channels = encode_out_channels[-1]  # 最后一个encode block的输出channels作为decode的输入channels
+        for out_channels in reversed(encode_out_channels[:-1]):  # decode与encode顺序相反，遍历所有剩余的encode block的输出channels
+            self.ups.append(
+                nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
+            )  # 上采样2倍，channels减小一倍
+            in_channels = in_channels // 2 + out_channels  # 与shortcut进行cat，改变了decode的输入channels
 
-    def __init__(self, decode_ups, decode_blocks):
-        super(UNetDecoder, self).__init__()
-        self.decode_ups = nn.ModuleList(decode_ups)  # 上采样
-        self.decode_blocks = nn.ModuleList(decode_blocks)  # decode
+            self.decodes.append(unet_conv(in_channels, out_channels))  # decode，decode是类似的都是2个3x3的same卷积
+            in_channels = out_channels  # decode的输入channels作为下一次迭代的输入channels
+            pass
+        self.classifier = nn.Conv2d(in_channels, n_class, 1)  # 1x1卷积得到最终分类预测
         pass
+
+    def forward(self, x, shortcuts):
+        for i, (up, decode) in enumerate(zip(self.ups, self.decodes)):
+            x = up(x)  # 先上采样
+            x, s = self._crop(x, shortcuts[-i - 1])  # 剪裁大小，因为下采样上采样等会使x和shortcut的spatial大小不一致
+            x = torch.cat([x, s], dim=1)  # 沿dim=1，也就是channel方向cat
+            x = decode(x)  # decode，decode是类似的都是2个3x3的same卷积
+        x = self.classifier(x)  # 1x1卷积得到最终分类预测
+        return x
 
     @staticmethod
     def _crop(x, shortcut):
@@ -91,246 +99,108 @@ class UNetDecoder(nn.Module):
         shortcut = shortcut[..., hc_s:hc_s + h, wc_s:wc_s + w]  # center crop
         return x, shortcut
 
-    def forward(self, x, shortcuts):
+    pass
+
+
+class _UNetFactory(nn.Module):
+    def __init__(self, encode_blocks, encode_out_channels, n_class,
+                 init_encoder=True, init_decoder=True):
         """
-        Decoder逐个block调用
-        :param x: Encoder生成的x
-        :param shortcuts: Encoder生成的shortcuts
-        :return: Decoder结果
+        UNet工厂类，用于生成UNet模型的网络。
+        :param encode_blocks: 列表类型。列表每个元素是一个encode的block
+        :param encode_out_channels: 列表类型。列表每个元素是encode block的输出channels，按照encode的顺序。
+        :param n_class: n种分类。
+        :param init_encoder: 是否初始化encoder的权重。ResNet修改了encoder部分，一般不需要初始化。
+        :param init_decoder: 是否初始化decoder的权重。decoder一般一样，都需要初始化。
         """
-        z = zip(self.decode_ups, self.decode_blocks)  # 上采样和decode一一对应
-        for i, (up, block) in enumerate(z):
-            x = up(x)  # 上采样
-            x, s = self._crop(x, shortcuts[-(i + 1)])  # 剪裁，shortcut顺序-1，-2，-3,-4，后出现的先融合
-            x = torch.cat((x, s), dim=1)  # concatenate特征融合
-            x = block(x)  # decode
+        super(_UNetFactory, self).__init__()
+        self.encoder = _UNetEncoder(encode_blocks)
+        self.decoder = _UNetDecoder(encode_out_channels, n_class)
+
+        # 初始化参数
+        if init_encoder:
+            for m in self.encoder.modules():
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                elif isinstance(m, nn.BatchNorm2d):
+                    nn.init.constant_(m.weight, 1)
+                    nn.init.constant_(m.bias, 0)
+        if init_decoder:
+            for m in self.decoder.modules():
+                if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                    nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                elif isinstance(m, nn.BatchNorm2d):
+                    nn.init.constant_(m.weight, 1)
+                    nn.init.constant_(m.bias, 0)
+        pass
+
+    def forward(self, x):
+        x, shortcuts = self.encoder(x)
+        x = self.decoder(x, shortcuts)
         return x
 
     pass
 
 
-def upconv(in_channels, out_channels):
+def unet_base(in_channels, n_class):
     """
-    论文中的上采样，用转置卷积实现，上次采样2倍
-    :return:
+    按照论文实现的unet网络，与论文不同的是使用了same卷积。
+    :param in_channels: 输入channels，也就是image的channels
+    :param n_class: n种分类
+    :return: unet网络
     """
-    return nn.ConvTranspose2d(in_channels, out_channels, 2, stride=2)
+    encode_blocks = [unet_conv(in_channels, 64)]
+    for i in range(4):
+        encode_blocks.append(nn.Sequential(nn.MaxPool2d(2, stride=2, ceil_mode=True),
+                                           unet_conv(64 * 2 ** i, 128 * 2 ** i)))
+    encode_out_channels = [64, 128, 256, 512, 1024]
+    return _UNetFactory(encode_blocks, encode_out_channels, n_class)
 
 
-def upsample(in_channels, out_channels):
+def unet_resnet(resnet_type, in_channels, n_class):
     """
-    论文中的上采样，用双线性差值实现，上采样2倍，再调整channel数
-    :return:
+    用resnet预训练模型作为encoder实现的unet网络。
+    :param resnet_type: resnet类型。可以是resnet18/34/50/101/152
+    :param in_channels: 输入channels，也就是image的channels
+    :param n_class: n种分类
+    :return: 使用resnet作为backbone的unet网络
     """
-    return nn.Sequential(
-        nn.Upsample(scale_factor=2, mode='bilinear', align_corners=False),
-        nn.Conv2d(in_channels, out_channels, 1)
-    )
+    if resnet_type == 'resnet18':
+        resnet = resnet18(pretrained=True)
+        encode_out_channels = [in_channels, 64, 64, 128, 256, 512]
+    elif resnet_type == 'resnet34':
+        resnet = resnet34(pretrained=True)
+        encode_out_channels = [in_channels, 64, 64, 128, 256, 512]
+    elif resnet_type == 'resnet50':
+        resnet = resnet50(pretrained=True)
+        encode_out_channels = [in_channels, 64, 256, 512, 1024, 2048]
+    elif resnet_type == 'resnet101':
+        resnet = resnet101(pretrained=True)
+        encode_out_channels = [in_channels, 64, 256, 512, 1024, 2048]
+    elif resnet_type == 'resnet152':
+        resnet = resnet152(pretrained=True)
+        encode_out_channels = [in_channels, 64, 256, 512, 1024, 2048]
+    else:
+        raise ValueError('resnet type error!')
+    encode_blocks = [nn.Sequential(),  # 1x，第1个encode block什么都不做
+                     nn.Sequential(resnet.conv1, resnet.bn1, resnet.relu),  # 2x，resnet的conv1_x进行第1次下采样
+                     nn.Sequential(resnet.maxpool, resnet.layer1),  # 4x，resnet的maxpool进行第2次下采样，conv2_x不进行下采样
+                     resnet.layer2,  # 8x，resnet的conv3_x进行第3次下采样
+                     resnet.layer3,  # 16x，resnet的conv4_x进行第4次下采样
+                     resnet.layer4]  # 32x，resnet的conv5_x进行第5次下采样
+    return _UNetFactory(encode_blocks, encode_out_channels, n_class, init_encoder=False)  # 有pretrain的encoder不初始化
 
-
-################################################################################
-
-class _UNetEncodeBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, maxpool=False, padding=0):
-        """
-        论文中的encode block，每个block有2个3x3卷积
-        两个3x3卷积默认不加padding，后面有bn所以bias=False
-        :param in_channels: 输入channels
-        :param out_channels: 输出channels
-        :param maxpool: 第一个block没有maxpool，其余的block有maxpool
-        :param padding: 论文没有padding
-        """
-        super(_UNetEncodeBlock, self).__init__()
-        self.maxpool = None
-        if maxpool:
-            self.maxpool = nn.MaxPool2d(2, stride=2, ceil_mode=True)  # 是否下采样
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=padding, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=padding, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-        )
-        pass
-
-    def forward(self, x):
-        if self.maxpool:
-            x = self.maxpool(x)
-        x = self.conv(x)
-        return x
-
-    pass
-
-
-class _UNetDecodeBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, padding=0):
-        """
-        论文中的decode block，不包括上采样和特征融合，每个block有2个3x3卷积
-        两个3x3卷积默认不加padding，后面有bn所以bias=False
-        :param in_channels: 输入channels
-        :param out_channels: 输出channels
-        :param padding: 论文不加padding
-        """
-        super(_UNetDecodeBlock, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=padding, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=padding, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-        )
-        pass
-
-    def forward(self, x):
-        x = self.conv(x)
-        return x
-
-    pass
-
-
-def unet(in_channels, n_class, upmode='upconv', padding=0):
-    """
-    生成论文的UNet
-    :param in_channels: 输入通道数
-    :param n_class: 分类数
-    :param upmode: 上采样模式，默认'upconv'转置卷积，'upsample'双线性差值
-    :return: 论文UNet网络
-    """
-    assert upmode == 'upconv' or upmode == 'upsample'
-
-    # Encoder
-    encode_blocks = [
-        _UNetEncodeBlock(in_channels, 64, padding=padding),  # 第一个encode没有下采样，有shortcut
-        _UNetEncodeBlock(64, 128, padding=padding, maxpool=True),  # 第二个encode有下采样，有shortcut
-        _UNetEncodeBlock(128, 256, padding=padding, maxpool=True),  # 第三个encode有下采样，有shortcut
-        _UNetEncodeBlock(256, 512, padding=padding, maxpool=True),  # 第四个encode有下采样，有shortcut
-    ]
-    encode_bottom = _UNetEncodeBlock(512, 1024, maxpool=True, padding=padding)  # 第五个encode有下采样，没有shortcut
-
-    # Upsample
-    decode_ups = None  # 上采样可以二选一
-    if upmode == 'upconv':  # 转置卷积
-        decode_ups = [upconv(1024, 512), upconv(512, 256),
-                      upconv(256, 128), upconv(128, 64)]
-    elif upmode == 'upsample':  # 双线性差值
-        decode_ups = [upsample(1024, 512), upsample(512, 256),
-                      upsample(256, 128), upsample(128, 64)]
-
-    # Decoder
-    decode_blocks = [
-        _UNetDecodeBlock(1024, 512, padding=padding),  # 第一个decode
-        _UNetDecodeBlock(512, 256, padding=padding),  # 第二个decode
-        _UNetDecodeBlock(256, 128, padding=padding),  # 第三个decode
-        _UNetDecodeBlock(128, 64, padding=padding),  # 第四个decode
-    ]
-    return UNetFactory(encode_blocks, encode_bottom, decode_ups, decode_blocks,
-                       n_class)
-
-
-################################################################################
-
-# TODO 待ResNet完成后修改
-class _UNetEncodeResBlock(nn.Module):
-    def __init__(self, in_channels, out_channels, maxpool=False):
-        super(_UNetEncodeResBlock, self).__init__()
-        self.maxpool = None
-        if maxpool:
-            self.maxpool = nn.MaxPool2d(2, stride=2, ceil_mode=True)
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=1)
-        )
-        self.adjust = nn.Conv2d(in_channels, out_channels, 1)
-        self.relu = nn.ReLU(inplace=True)
-        pass
-
-    def forward(self, x):
-        if self.maxpool:
-            x = self.maxpool(x)
-        c = self.conv(x)  # 卷积
-        x = self.adjust(x)  # 调整channel数
-        x = c + x  # residual
-        x = self.relu(x)  # relu
-        return x
-
-    pass
-
-
-class _UNetDecodeResBlock(nn.Module):
-    def __init__(self, in_channels, out_channels):
-        super(_UNetDecodeResBlock, self).__init__()
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=1),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, padding=1)
-        )
-        self.adjust = nn.Conv2d(in_channels, out_channels, 1)
-        self.relu = nn.ReLU(inplace=True)
-        pass
-
-    def forward(self, x):
-        c = self.conv(x)
-        x = self.adjust(x)
-        x = c + x
-        x = self.relu(x)
-        return x
-
-
-def unet_res_block(in_channels, n_class, upmode='upconv'):
-    """
-    用Residual Block替换论文中的两层卷积形成的UNet
-    :param in_channels: 输入通道数
-    :param n_class: 分类数
-    :param upmode: 上采样模式，默认转置卷积，'bilinear'双线性差值
-    :return: 用Residual Block替换论文中的两层卷积形成的UNet
-    """
-    assert upmode == 'upconv' or upmode == 'upsample'
-
-    # Encoder
-    encode_blocks = [
-        _UNetEncodeResBlock(in_channels, 64),
-        _UNetEncodeResBlock(64, 128, maxpool=True),
-        _UNetEncodeResBlock(128, 256, maxpool=True),
-        _UNetEncodeResBlock(256, 512, maxpool=True),
-    ]
-    encode_bottom = _UNetEncodeResBlock(512, 1024, maxpool=True)
-
-    # Upsample
-    decode_ups = None
-    if upmode == 'upconv':
-        decode_ups = [upconv(1024, 512), upconv(512, 256),
-                      upconv(256, 128), upconv(128, 64)]
-    elif upmode == 'upsample':
-        decode_ups = [upsample(1024, 512), upsample(512, 256),
-                      upsample(256, 128), upsample(128, 64)]
-
-    # Decoder
-    decode_blocks = [
-        _UNetDecodeResBlock(1024, 512),
-        _UNetDecodeResBlock(512, 256),
-        _UNetDecodeResBlock(256, 128),
-        _UNetDecodeResBlock(128, 64),
-    ]
-    return UNetFactory(encode_blocks, encode_bottom, decode_ups, decode_blocks,
-                       n_class)
-
-
-################################################################################
 
 if __name__ == '__main__':
-    """
-    单元测试
-    """
-    channel = 1
-    num_class = 2
-    net = unet(channel, num_class, padding=1)
-    print(net)
+    """单元测试"""
+    model = unet_resnet('resnet18', 3, 8)  # resnet18作为backbone的unet
+    model.to(Config.DEVICE)  # 装入gpu
+    print(model)  # 打印看模型是否正确
 
-    # size = 572
-    # in_data = torch.randint(0, 255, (size, size), dtype=torch.float32)
-    # in_data = in_data.view((1, channel, size, size))
+    in_data = torch.randint(0, 256, (1, 3, 572, 572), dtype=torch.float)  # 测试输入
+    in_data = in_data.to(Config.DEVICE)  # 装入gpu
+    print(in_data.shape)
 
-
+    out_data = model(in_data)
+    print(out_data.shape)  # 输出应该是1x8x572x572的tensor
+    pass

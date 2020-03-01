@@ -4,12 +4,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.data as data
-from torch.autograd import Variable
 from datetime import datetime
-from nets.fcn8s import FCN8s
-from nets.unet import unet
+from nets.unet import unet_base, unet_resnet
 from utils.laneseg_dataset import LaneSegDataset
 from utils.loss_func import MySoftmaxCrossEntropyLoss, FocalLoss, DiceLoss, SoftIoULoss, MulticlassDiceLoss
+from utils.make_list import make_data_list
 from config import Config
 
 
@@ -52,7 +51,7 @@ def epoch_timer(func):
         end_time = datetime.now()  # 结束时间
         mm, ss = divmod((end_time - begin_time).seconds, 60)  # 秒换算成分、秒
         hh, mm = divmod(mm, 60)  # 分钟换算成时、分
-        print('Time: {:02d}:{:02d}:{:02d}'.format(hh, mm, ss))  # HH:mm:ss
+        print('Time: {:02d}:{:02d}:{:02d}'.format(hh, mm, ss), end='|')  # HH:mm:ss
         return res  # 返回func返回值
 
     return timer
@@ -90,16 +89,16 @@ def get_miou(cm, n_class):
     """
     计算mIoU
     diag是对角线元素，也就是各个分类的TP
-    np.sum(cm, axis=0)也就是各个分类的TP+FP
-    np.sum(cm, axis=1)也就是各个分类的TP+FN
-    iou是各个分类的IoU=TP/(TP+FP+FN)
-    返回是平均IoU将各分类IoU相加再除以分类数
-    :param cm:
-    :param n_class:
+    torch.sum(cm, axis=0)也就是各个分类的TP+FP
+    torch.sum(cm, axis=1)也就是各个分类的TP+FN
+    返回是mIoU将各分类IoU相加再除以分类数
+    :param cm: 混淆矩阵。dim=0是grand truth，dim=1是pred。
+    :param n_class: n中分类
     :return:
     """
-    iou = torch.diag(cm) / (torch.sum(cm, axis=0) + torch.sum(cm, axis=1) - torch.diag(cm))
-    return torch.sum(iou) / n_class
+    cm = cm.cpu().numpy()
+    iou = np.diag(cm) / (np.sum(cm, axis=0) + np.sum(cm, axis=1) - np.diag(cm))
+    return np.nanmean(iou)
 
 
 @epoch_timer  # 记录一个epoch时间并打印
@@ -159,9 +158,7 @@ def epoch_valid(net, loss_func, dataset, n_class):
         # 验证的时候不进行反向传播
         pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction
         lb = lb.squeeze(1)  # label转换为numpy
-        temp = get_confusion_matrix(pred, lb, n_class)
-        # print(i, temp)
-        confusion_matrix += temp  # 计算混淆矩阵并累加
+        confusion_matrix += get_confusion_matrix(pred, lb, n_class)  # 计算混淆矩阵并累加
         pass
     total_loss /= len(dataset)  # 求取一个epoch验证的loss
     mean_iou = get_miou(confusion_matrix, n_class)
@@ -196,19 +193,19 @@ def train(net, loss_func, optimizer, train_data, valid_data, n_class, name, epoc
     :return:
     """
     for e in range(epochs):
-        print('Epoch: {:d}'.format(e + 1))
+        print('\nEpoch: {:d}'.format(e + 1), end='|')
 
         # 一个epoch训练
         t_loss, t_miou = epoch_train(net, loss_func, optimizer, train_data, n_class)
-        train_str = 'Train Loss: {:.4f} | Train mIoU: {:.4f}'
-        print(train_str.format(t_loss, t_miou))
+        train_str = 'Train Loss: {:.4f}|Train mIoU: {:.4f}'
+        print(train_str.format(t_loss, t_miou), end='|')
 
         # 一个epoch验证
         v_loss, v_miou = epoch_valid(net, loss_func, valid_data, n_class)
-        valid_str = 'Valid Loss: {:.4f} | Valid mIoU: {:.4f}'
-        print(valid_str.format(v_loss, v_miou))
+        valid_str = 'Valid Loss: {:.4f}|Valid mIoU: {:.4f}'
+        print(valid_str.format(v_loss, v_miou), end='|')
 
-        # save_checkpoint(net, name, e)  # 每个epoch的参数都保存
+        save_checkpoint(net, name, e)  # 每个epoch的参数都保存
         pass
     pass
 
@@ -240,9 +237,17 @@ if __name__ == '__main__':
                                 batch_size=Config.TRAIN_BATCH_SIZE),
     }
 
+    make_data_list(train_path=Config.DATALIST_TRAIN,
+                   valid_path=Config.DATALIST_VALID,
+                   test_path=Config.DATALIST_TEST,
+                   train_rate=Config.TRAIN_RATE,
+                   valid_rate=Config.VALID_RATE)  # 生成csv文件
+
     num_class = 8
     # custom_model = FCN8s(n_class=num_class)
-    custom_model = unet(3, num_class, upmode='upsample', padding=1)
+    # custom_model = unet(3, num_class, upmode='upsample', padding=1)
+    custom_model = unet_resnet('resnet50', 3, num_class)
+    # custom_model = unet_base(3, num_class)
     print(custom_model)
     custom_model.to(Config.DEVICE)
 
@@ -257,4 +262,4 @@ if __name__ == '__main__':
 
     train(custom_model, custom_loss_func, custom_optimizer,
           data_loaders['train'], data_loaders['valid'],
-          n_class=num_class, name='fcn8s', epochs=2)  # 开始训（炼）练（丹）
+          n_class=num_class, name='unet_resnet50', epochs=5)  # 开始训（炼）练（丹）
