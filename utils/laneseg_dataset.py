@@ -11,7 +11,7 @@ class LaneSegDataset(data.Dataset):
     """
     根据输入的csv文件，读取image和label
     对label做id到trainid的转换
-    并迭代输出
+    并输出image和label，都是PIL Image
     """
 
     def __init__(self, data_list, image_transform=None, label_transform=None):
@@ -72,7 +72,7 @@ if __name__ == '__main__':
         'valid': data.DataLoader(dataset=image_datasets['valid'],
                                  batch_size=Config.TRAIN_BATCH_SIZE),
         'test': data.DataLoader(dataset=image_datasets['test'],
-                                batch_size=Config.TRAIN_BATCH_SIZE),
+                                batch_size=Config.TEST_BATCH_SIZE),
     }
 
     # 逐个读取，查看读取的内容，验证dataloader可用
@@ -83,9 +83,3 @@ if __name__ == '__main__':
         print(i)
         print(type(im), im.shape)
         print(type(lb), lb.shape, np.bincount(lb.flatten()))
-        a = lb.type(torch.int).sum()
-        if a > 0:
-            print('error')
-        else:
-            print('ok')
-        pass
