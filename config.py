@@ -1,5 +1,7 @@
 import torch
 import torchvision.transforms as tsfs
+import numpy as np
+from PIL import Image
 
 
 class Config(object):
@@ -9,7 +11,7 @@ class Config(object):
     # 设备   ####################################################################
     # DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # DEVICE = torch.device('cpu')
-    DEVICE = torch.device('cuda:7')
+    DEVICE = torch.device('cuda:6')
 
     # 数据集 ####################################################################
     DATASETS_ROOT = '/root/private/torch_datasets'  # Pytorch数据集根目录
@@ -17,8 +19,8 @@ class Config(object):
     IMAGE_BASE = '/root/data/LaneSeg/Image_Data'  # image文件的根目录
     LABEL_BASE = '/root/data/LaneSeg/Gray_Label'  # label文件的根目录
 
-    TRAIN_RATE = 0.07  # 数据集划分，训练集占整个数据集的比例
-    VALID_RATE = 0.02  # 数据集划分，验证集占整个数据集的比例
+    TRAIN_RATE = 0.0125  # 数据集划分，训练集占整个数据集的比例
+    VALID_RATE = 0.0025  # 数据集划分，验证集占整个数据集的比例
 
     DATALIST_TRAIN = '/root/private/LaneSegmentation/data_list/train.csv'  # 车道线分割训练集csv文件路径
     DATALIST_VALID = '/root/private/LaneSegmentation/data_list/valid.csv'  # 车道线分割验证集csv文件路径
@@ -29,7 +31,7 @@ class Config(object):
 
     # 超参数 ####################################################################
     TRAIN_BATCH_SIZE = 1  # batch大小
-    LEARN_RATE = 0.1  # 学习率
+    LEARN_RATE = 0.003  # 学习率
     WEIGHT_DECAY = 0.0001
     EPOCHS = 10  # 训练次数
 
@@ -43,37 +45,37 @@ class Config(object):
     IMAGE_TRANSFORMS = {
         'train': tsfs.Compose([
             tsfs.Resize(size=448),  # 缩放
-            tsfs.ToTensor(),  # 转换成Tensor
-            # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
+            tsfs.ToTensor(),  # 转换成Tensor，同时除以255归一化
         ]),
         'valid': tsfs.Compose([
             tsfs.Resize(size=448),  # 缩放
-            tsfs.ToTensor(),  # 转换成Tensor
-            # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
+            tsfs.ToTensor(),  # 转换成Tensor，同时除以255归一化
         ]),
         'test': tsfs.Compose([
             tsfs.Resize(size=448),  # 测试一般不进行缩放
-            tsfs.ToTensor(),  # 转换成Tensor
-            # tsfs.Normalize(IMAGE_NORM_MEAN, IMAGE_NORM_STD),  # 归一化
+            tsfs.ToTensor(),  # 转换成Tensor，同时除以255归一化
         ]),
     }
 
     # 训练、验证、测试集的label的transforms，用法Config.LABEL_TRANSFORMS['train']等
     LABEL_TRANSFORMS = {
         'train': tsfs.Compose([
-            tsfs.Resize(size=448),  # 缩放
-            tsfs.ToTensor(),  # 转换成Tensor
-            # trainId不进行归一化
+            tsfs.Resize(size=448, interpolation=Image.NEAREST),  # 缩放，为不产生错误label用NEAREST
+            # tsfs.ToTensor(),
+            np.array,  # PIL转为ndarray
+            torch.from_numpy  # 再转成tensor
         ]),
         'valid': tsfs.Compose([
-            tsfs.Resize(size=448),  # 缩放
-            tsfs.ToTensor(),  # 转换成Tensor
-            # trainId不进行归一化
+            tsfs.Resize(size=448, interpolation=Image.NEAREST),  # 缩放，为不产生错误label用NEAREST
+            # tsfs.ToTensor(),
+            np.array,  # PIL转为ndarray
+            torch.from_numpy  # 再转成tensor
         ]),
         'test': tsfs.Compose([
-            tsfs.Resize(size=448),  # 测试一般不进行缩放
-            tsfs.ToTensor(),  # 转换成Tensor
-            # trainId不进行归一化
+            tsfs.Resize(size=448, interpolation=Image.NEAREST),  # 缩放，为不产生错误label用NEAREST
+            # tsfs.ToTensor(),
+            np.array,  # PIL转为ndarray
+            torch.from_numpy  # 再转成tensor
         ]),
     }
 

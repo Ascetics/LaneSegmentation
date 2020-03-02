@@ -157,7 +157,7 @@ def unet_base(in_channels, n_class):
     return _UNetFactory(encode_blocks, encode_out_channels, n_class)
 
 
-def unet_resnet(resnet_type, in_channels, n_class):
+def unet_resnet(resnet_type, in_channels, n_class, pretrained=True):
     """
     用resnet预训练模型作为encoder实现的unet网络。
     :param resnet_type: resnet类型。可以是resnet18/34/50/101/152
@@ -166,19 +166,19 @@ def unet_resnet(resnet_type, in_channels, n_class):
     :return: 使用resnet作为backbone的unet网络
     """
     if resnet_type == 'resnet18':
-        resnet = resnet18(pretrained=True)
+        resnet = resnet18(pretrained=pretrained)
         encode_out_channels = [in_channels, 64, 64, 128, 256, 512]
     elif resnet_type == 'resnet34':
-        resnet = resnet34(pretrained=True)
+        resnet = resnet34(pretrained=pretrained)
         encode_out_channels = [in_channels, 64, 64, 128, 256, 512]
     elif resnet_type == 'resnet50':
-        resnet = resnet50(pretrained=True)
+        resnet = resnet50(pretrained=pretrained)
         encode_out_channels = [in_channels, 64, 256, 512, 1024, 2048]
     elif resnet_type == 'resnet101':
-        resnet = resnet101(pretrained=True)
+        resnet = resnet101(pretrained=pretrained)
         encode_out_channels = [in_channels, 64, 256, 512, 1024, 2048]
     elif resnet_type == 'resnet152':
-        resnet = resnet152(pretrained=True)
+        resnet = resnet152(pretrained=pretrained)
         encode_out_channels = [in_channels, 64, 256, 512, 1024, 2048]
     else:
         raise ValueError('resnet type error!')
@@ -188,7 +188,8 @@ def unet_resnet(resnet_type, in_channels, n_class):
                      resnet.layer2,  # 8x，resnet的conv3_x进行第3次下采样
                      resnet.layer3,  # 16x，resnet的conv4_x进行第4次下采样
                      resnet.layer4]  # 32x，resnet的conv5_x进行第5次下采样
-    return _UNetFactory(encode_blocks, encode_out_channels, n_class, init_encoder=False)  # 有pretrain的encoder不初始化
+    return _UNetFactory(encode_blocks, encode_out_channels, n_class,
+                        init_encoder=not pretrained)  # 有pretrain的encoder不初始化
 
 
 if __name__ == '__main__':

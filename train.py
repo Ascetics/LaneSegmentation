@@ -70,8 +70,8 @@ def get_confusion_matrix(pred, label, n_class):
     ...
     label=7,pred=0,1,2,...,7映射后是56,57,58,...,63
     bincount 统计以后就会对应到0,1,2,...,63，再reshape就得到了混淆矩阵
-    :param pred: 估值
-    :param label: grand true
+    :param pred: 估值 NHW
+    :param label: grand true NHW
     :param n_class: n种分类
     :return: 混淆矩阵
     """
@@ -118,20 +118,20 @@ def epoch_train(net, loss_func, optimizer, dataset, n_class):
     confusion_matrix = torch.zeros((n_class, n_class)).to(Config.DEVICE)  # 一个epoch的混淆矩阵
 
     for i, (im, lb) in enumerate(dataset):
-        im = im.to(Config.DEVICE)  # 一个训练batch image
-        lb = lb.to(Config.DEVICE)  # 一个训练batch label
+        im = im.to(Config.DEVICE)  # 一个训练batch image NCHW
+        lb = lb.to(Config.DEVICE)  # 一个训练batch label NHW
 
         optimizer.zero_grad()  # 清空梯度
 
-        output = net(im)  # 前向传播，计算一个训练batch的output
-        loss = loss_func(output, lb.squeeze(1).type(torch.int64))  # 计算一个训练batch的loss
+        output = net(im)  # 前向传播，计算一个训练batch的output NCHW
+        loss = loss_func(output, lb.type(torch.int64))  # 计算一个训练batch的loss
         total_loss += loss.detach().item()  # 累加训练batch的loss
 
         loss.backward()  # 反向传播
         optimizer.step()  # 优化器迭代
 
-        pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction，减少一个C维度
-        lb = lb.squeeze(1)  # label也减少一个C维度
+        pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction，减少一个C维度 NHW
+        # lb = lb.squeeze(1)  # label也减少一个C维度 NHW
         confusion_matrix += get_confusion_matrix(pred, lb, n_class)  # 计算混淆矩阵并累加
         pass
     total_loss /= len(dataset)  # 求取一个epoch训练的loss
@@ -152,12 +152,12 @@ def epoch_valid(net, loss_func, dataset, n_class):
         lb = lb.to(Config.DEVICE)  # 一个验证batch label
 
         output = net(im)  # 前项传播，计算一个验证batch的output
-        loss = loss_func(output, lb.squeeze(1).type(torch.int64))  # 计算一个验证batch的loss
+        loss = loss_func(output, lb.type(torch.int64))  # 计算一个验证batch的loss
         total_loss += loss.detach().item()  # 累加验证batch的loss
 
         # 验证的时候不进行反向传播
         pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction
-        lb = lb.squeeze(1)  # label转换为numpy
+        # lb = lb.squeeze(1)  # label转换为numpy
         confusion_matrix += get_confusion_matrix(pred, lb, n_class)  # 计算混淆矩阵并累加
         pass
     total_loss /= len(dataset)  # 求取一个epoch验证的loss
@@ -192,8 +192,8 @@ def train(net, loss_func, optimizer, train_data, valid_data, n_class, name, epoc
     :param epochs: epoch数，默认是5
     :return:
     """
-    for e in range(epochs):
-        print('\nEpoch: {:d}'.format(e + 1), end='|')
+    for e in range(1, epochs + 1):
+        print('\nEpoch: {:d}'.format(e), end='|')
 
         # 一个epoch训练
         t_loss, t_miou = epoch_train(net, loss_func, optimizer, train_data, n_class)
@@ -246,20 +246,22 @@ if __name__ == '__main__':
     num_class = 8
     # custom_model = FCN8s(n_class=num_class)
     # custom_model = unet(3, num_class, upmode='upsample', padding=1)
-    custom_model = unet_resnet('resnet50', 3, num_class)
+    custom_model = unet_resnet('resnet50', 3, num_class, pretrained=False)
     # custom_model = unet_base(3, num_class)
     print(custom_model)
     custom_model.to(Config.DEVICE)
 
     # custom_loss_func = cross_entropy2d  # loss函数
-    # custom_loss_func = MySoftmaxCrossEntropyLoss(num_class)
+    custom_loss_func = MySoftmaxCrossEntropyLoss(num_class)
     # custom_loss_func = SoftIoULoss(num_class)
-    custom_loss_func = MulticlassDiceLoss()
+    # custom_loss_func = MulticlassDiceLoss()
+    # custom_loss_func = nn.CrossEntropyLoss()
     custom_loss_func.to(Config.DEVICE)
 
     custom_optimizer = torch.optim.Adam(params=custom_model.parameters(),
+                                        lr=Config.LEARN_RATE,
                                         weight_decay=Config.WEIGHT_DECAY)  # 将模型参数装入优化器
 
     train(custom_model, custom_loss_func, custom_optimizer,
           data_loaders['train'], data_loaders['valid'],
-          n_class=num_class, name='unet_resnet50', epochs=5)  # 开始训（炼）练（丹）
+          n_class=num_class, name='unet_resnet50', epochs=Config.EPOCHS)  # 开始训（炼）练（丹）
