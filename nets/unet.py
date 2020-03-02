@@ -60,14 +60,18 @@ class _UNetDecoder(nn.Module):
         super(_UNetDecoder, self).__init__()
         self.ups = nn.ModuleList()  # 上采样
         self.decodes = nn.ModuleList()  # decode
-        in_channels = encode_out_channels[-1]  # 最后一个encode block的输出channels作为decode的输入channels
-        for out_channels in reversed(encode_out_channels[:-1]):  # decode与encode顺序相反，遍历所有剩余的encode block的输出channels
-            self.ups.append(
-                nn.ConvTranspose2d(in_channels, in_channels // 2, kernel_size=2, stride=2)
-            )  # 上采样2倍，channels减小一倍
-            in_channels = in_channels // 2 + out_channels  # 与shortcut进行cat，改变了decode的输入channels
 
+        in_channels = encode_out_channels[-1]  # 最后一个encode block的输出channels作为decode的输入channels
+        for cat_channels in reversed(encode_out_channels[:-1]):  # decode与encode顺序相反，遍历所有剩余的encode block的输出channels
+            out_channels = in_channels // 2  # 上采样输出channels是输入channels的一半,spatial增大一倍
+            self.ups.append(
+                nn.ConvTranspose2d(in_channels, out_channels, kernel_size=2, stride=2)
+            )
+
+            in_channels = out_channels + cat_channels  # 与shortcut进行cat，改变了decode的输入channels
+            # out_channels = in_channels // 2  # decode输出channels是输入channels的一半
             self.decodes.append(unet_conv(in_channels, out_channels))  # decode，decode是类似的都是2个3x3的same卷积
+
             in_channels = out_channels  # decode的输入channels作为下一次迭代的输入channels
             pass
         self.classifier = nn.Conv2d(in_channels, n_class, 1)  # 1x1卷积得到最终分类预测
