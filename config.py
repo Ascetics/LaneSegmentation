@@ -28,6 +28,7 @@ class Config(object):
 
     # 训练结果###################################################################
     WEIGHT_SAVE_PATH = '/root/private/LaneSegmentation/weight'  # weight保存路径
+    TEST_BATCH_SIZE = 1  # 测试集batch为1，这样可以一张图一张图的看
 
     # 超参数 ####################################################################
     TRAIN_BATCH_SIZE = 1  # batch大小
@@ -42,6 +43,7 @@ class Config(object):
     LABEL_NORM_STD = [0.5]  # label的std
 
     # 训练、验证、测试集的image的transforms，用法Config.IMAGE_TRANSFORMS['train']等
+    # 经过转换后的image是NCHW的张量
     IMAGE_TRANSFORMS = {
         'train': tsfs.Compose([
             tsfs.Resize(size=448),  # 缩放
@@ -58,22 +60,20 @@ class Config(object):
     }
 
     # 训练、验证、测试集的label的transforms，用法Config.LABEL_TRANSFORMS['train']等
+    # 经过转换后的label是NHW的张量
     LABEL_TRANSFORMS = {
         'train': tsfs.Compose([
             tsfs.Resize(size=448, interpolation=Image.NEAREST),  # 缩放，为不产生错误label用NEAREST
-            # tsfs.ToTensor(),
             np.array,  # PIL转为ndarray
             torch.from_numpy  # 再转成tensor
         ]),
         'valid': tsfs.Compose([
             tsfs.Resize(size=448, interpolation=Image.NEAREST),  # 缩放，为不产生错误label用NEAREST
-            # tsfs.ToTensor(),
             np.array,  # PIL转为ndarray
             torch.from_numpy  # 再转成tensor
         ]),
         'test': tsfs.Compose([
             tsfs.Resize(size=448, interpolation=Image.NEAREST),  # 缩放，为不产生错误label用NEAREST
-            # tsfs.ToTensor(),
             np.array,  # PIL转为ndarray
             torch.from_numpy  # 再转成tensor
         ]),

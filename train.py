@@ -175,7 +175,7 @@ def save_checkpoint(net, name, epoch):
     :return:
     """
     save_dir = os.path.join(os.getcwd(), 'weight')
-    save_dir = os.path.join(save_dir, name + '-' + str(epoch) + '.pkl')
+    save_dir = os.path.join(save_dir, name + '-' + '{:02d}'.format(epoch) + '.pkl')
     torch.save(net.state_dict(), save_dir)
     pass
 
@@ -234,7 +234,7 @@ if __name__ == '__main__':
         'valid': data.DataLoader(dataset=image_datasets['valid'],
                                  batch_size=Config.TRAIN_BATCH_SIZE),
         'test': data.DataLoader(dataset=image_datasets['test'],
-                                batch_size=Config.TRAIN_BATCH_SIZE),
+                                batch_size=Config.TEST_BATCH_SIZE),
     }
 
     make_data_list(train_path=Config.DATALIST_TRAIN,
@@ -246,7 +246,7 @@ if __name__ == '__main__':
     num_class = 8
     # custom_model = FCN8s(n_class=num_class)
     # custom_model = unet(3, num_class, upmode='upsample', padding=1)
-    custom_model = unet_resnet('resnet50', 3, num_class, pretrained=False)
+    custom_model = unet_resnet('resnet50', 3, num_class, pretrained=True)
     # custom_model = unet_base(3, num_class)
     print(custom_model)
     custom_model.to(Config.DEVICE)
