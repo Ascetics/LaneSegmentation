@@ -1,130 +1,188 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torchvision
+from nets.resnet_backbone import resnet18_backbone, resnet34_backbone
+from nets.resnet_backbone import resnet50_backbone, resnet101_backbone, resnet152_backbone
+
+
+class ASPPConv1x1(nn.Sequential):
+    def __init__(self, in_channels, out_channels):
+        """
+        ASPP用的5个处理之1，1个1x1卷积
+        :param in_channels: 输入channels，是backbone产生的主要特征的输出channels
+        :param out_channels: 输出channels，论文建议取值256
+        """
+        modules = [nn.Conv2d(in_channels, out_channels, 1, bias=False),
+                   nn.BatchNorm2d(out_channels),
+                   nn.ReLU(inplace=True), ]
+        super(ASPPConv1x1, self).__init__(*modules)
+        pass
+
+    pass
+
+
+class ASPPConv(nn.Sequential):
+    def __init__(self, in_channels, out_channels, dilation):
+        """
+        ASPP用的5个处理之3，3个dilation conv，都是3x3的same卷积
+        :param in_channels: dilation conv的输入channels，是backbone产生的主要特征的输出channels
+        :param out_channels: dilation conv的输出channels，论文建议取值256
+        :param dilation: 膨胀率，论文建议取值6,12,18
+        """
+        modules = [nn.Conv2d(in_channels, out_channels, kernel_size=3,
+                             padding=dilation, dilation=dilation, bias=False),  # same卷积padding=dilation*(k-1)/2
+                   nn.BatchNorm2d(out_channels),  # 有BN，卷积bias=False
+                   nn.ReLU(inplace=True), ]  # 激活函数
+        super(ASPPConv, self).__init__(*modules)
+        pass
+
+    pass
+
+
+class ASPPPooling(nn.Sequential):
+    def __init__(self, in_channels, out_channels):
+        """
+        ASPP用的5个处理之1，Image Pooling
+        :param in_channels: 输入channels，是backbone产生的主要特征的输出channels
+        :param out_channels: 输出channels，论文建议取值256
+        """
+        modules = [nn.AdaptiveAvgPool2d(1),  # 全局平均池化，输出spatial大小1
+                   nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False),  # 1x1卷积调整channels
+                   nn.BatchNorm2d(out_channels),  # 有BN，卷积bias=False
+                   nn.ReLU(inplace=True), ]  # 激活函数
+        super(ASPPPooling, self).__init__(*modules)
+        pass
+
+    def forward(self, x):
+        size = x.shape[-2:]  # 记录下输入的大小
+        for mod in self:
+            x = mod(x)
+        return F.interpolate(x, size=size, mode='bilinear', align_corners=False)  # 双线性差值上采样到原spatial大小
+
+    pass
 
 
 class ASPP(nn.Module):
     def __init__(self, in_channels, out_channels):
+        """
+        ASPP，对backbone产生的主干特征进行空间金字塔池化。
+        金字塔有5层：1个1x1卷积，3个3x3 dilation conv，1个全局平均池化
+        将5层cat后再调整channels输出。
+        这里不进行upsample，因为不知道low-level的spatial大小。
+        :param in_channels: 输入channels，是backbone产生的主要特征的输出channels
+        :param out_channels: 输出channels，论文建议取值256
+        """
         super(ASPP, self).__init__()
-        self.aspp1 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
-        self.aspp6 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=6, dilation=6, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
-        self.aspp12 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=12, dilation=12, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
-        self.aspp18 = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, padding=18, dilation=18, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True)
-        )
-        self.pool = nn.Sequential(
-            nn.AdaptiveAvgPool2d(1),
-            nn.Conv2d(in_channels, out_channels, 1)
-        )
-        self.adjust_channel = nn.Conv2d(5 * out_channels, out_channels, 1)
+        modules = [ASPPConv1x1(in_channels, out_channels),  # 1个1x1卷积
+                   ASPPConv(in_channels, out_channels, dilation=6),  # 3x3 dilation conv，dilation=6
+                   ASPPConv(in_channels, out_channels, dilation=12),  # 3x3 dilation conv，dilation=12
+                   ASPPConv(in_channels, out_channels, dilation=18),  # 3x3 dilation conv，dilation=18
+                   ASPPPooling(in_channels, out_channels), ]  # 全局平均池化Image Pooling
+        self.convs = nn.ModuleList(modules)
+        self.project = nn.Sequential(nn.Conv2d(5 * out_channels, out_channels, 1, bias=False),
+                                     nn.BatchNorm2d(out_channels),
+                                     nn.ReLU(inplace=True),
+                                     nn.Dropout2d(0.5))  # 将5层cat后再调整channels输出，但不知道为什么Dropout
         pass
 
     def forward(self, x):
-        c = []
-
-        size = x.shape[2:]
-        h = self.pool(x)
-        h = F.interpolate(h, size=size, mode='bilinear', align_corners=False)
-        c.append(h)
-
-        c.append(self.aspp18(x))
-        c.append(self.aspp12(x))
-        c.append(self.aspp6(x))
-        c.append(self.aspp1(x))
-
-        x = torch.cat(c, dim=1)
-        x = self.adjust_channel(x)
+        output = []
+        for mod in self.convs:
+            output.append(mod(x))
+            pass
+        x = torch.cat(output, dim=1)
+        x = self.project(x)
         return x
 
     pass
 
 
+def resnet_backbone(in_channels, resnet_type='resnet101'):
+    """
+    使用ResNet作为backbone
+    :param in_channels: 输出channels也就是图像的channels
+    :param resnet_type: 默认和论文一致ResNet101
+    :return: 返回backbone，主干特征channels，low-level特征channels
+    """
+    if resnet_type == 'resnet18':
+        backbone = resnet18_backbone(in_channels=in_channels)
+        atrous_channels = 512
+        low_level_channels = 64
+    elif resnet_type == 'resnet34':
+        backbone = resnet34_backbone(in_channels=in_channels)
+        atrous_channels = 512
+        low_level_channels = 64
+    elif resnet_type == 'resnet50':
+        backbone = resnet50_backbone(in_channels=in_channels)
+        atrous_channels = 2048
+        low_level_channels = 256
+    elif resnet_type == 'resnet101':
+        backbone = resnet101_backbone(in_channels=in_channels)
+        atrous_channels = 2048
+        low_level_channels = 256
+    elif resnet_type == 'resnet152':
+        backbone = resnet152_backbone(in_channels=in_channels)
+        atrous_channels = 2048
+        low_level_channels = 256
+    else:
+        raise ValueError('resnet type error!')
+    return backbone, atrous_channels, low_level_channels
+
+
 class DeepLabV3P(nn.Module):
-    def __init__(self, n_class):
+    aspp_out_channels = 256  # ASPP最终输出channels=256
+    reduce_to_channels = 48  # 论文中说low-level特征减少channels到48
+
+    def __init__(self, backbone_type, in_channels, n_class):
         super(DeepLabV3P, self).__init__()
-        # # backbone 使用了resnet50
-        resnet50 = torchvision.models.resnet50(pretrained=True)
+        if backbone_type == 'resnet':  # 目前只支持ResNet101作为backbone
+            backbone, aspp_in_channels, low_level_in_channels = resnet_backbone(in_channels)
+        else:
+            raise ValueError('backbone type error!')
+        self.backbone = backbone
+        self.aspp = ASPP(aspp_in_channels, self.aspp_out_channels)  # 论文建议channels=256
 
-        # backbone 使用了resnet50， in_channels=3， out_channels=64
-        self.start = nn.Sequential(
-            resnet50.conv1,  # out_channel2=64
-            resnet50.bn1,
-            resnet50.relu,
-            resnet50.maxpool
-        )
+        reduce_modules = [nn.Conv2d(low_level_in_channels, self.reduce_to_channels, 1, bias=False),
+                          nn.BatchNorm2d(self.reduce_to_channels),
+                          nn.ReLU(inplace=True), ]
+        self.reduce_channels = nn.Sequential(*reduce_modules)
 
-        # 从另一段代码看来的，不知道为什么是这样产生low-level feature
-        # 也不知道为什么out_channels是48
-        self.low_feature = nn.Sequential(
-            nn.Conv2d(64, 48, 3, padding=1, bias=False),
-            nn.BatchNorm2d(48),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(48, 256, 1)
-        )
-
-        # backbone的后半部分
-        self.layers = nn.Sequential(
-            resnet50.layer1,
-            resnet50.layer2,
-            resnet50.layer3,
-            resnet50.layer4  # out_channels=2048
-        )
-
-        self.aspp = ASPP(in_channels=2048, out_channels=256)
-        self.conv = nn.Sequential(
-            nn.Conv2d(512, 256, 3, padding=1, bias=False),
-            nn.BatchNorm2d(256),
-            nn.ReLU(inplace=True)
-        )
-        self.adjust_channel = nn.Conv2d(256, n_class, 1)
+        decode_modules = [nn.Conv2d(self.aspp_out_channels + self.reduce_to_channels, 256, 3, padding=1, bias=False),
+                          nn.BatchNorm2d(256),
+                          nn.ReLU(inplace=True),
+                          nn.Conv2d(256, n_class, 3, padding=1, bias=False),
+                          nn.BatchNorm2d(n_class),
+                          nn.ReLU(inplace=True), ]
+        self.decode = nn.Sequential(*decode_modules)
         pass
 
     def forward(self, x):
-        origin_size = x.shape[2:]  # 记录输入图像spatial大小
+        size1 = x.shape[-2:]  # 图像原始大小
 
-        x = self.start(x)  # backbone前半部分
-        low_feature = self.low_feature(x)  # low-level feature，已经conv1x1，out_channel=256
-        x = self.layers(x)  # backbone后半部分
+        high_level, low_level = self.backbone(x)  # 提取特征，主干特征high-level和低级特征low-level
 
-        low_feature_size = low_feature.shape[2:]
-        x = self.aspp(x)
-        x = F.interpolate(x, low_feature_size, mode='bilinear', align_corners=False)  # spatial一致
-        x = torch.cat((low_feature, x), dim=1)
+        low_level = self.reduce_channels(low_level)  # low-level feature减少channels到48
+        size2 = low_level.shape[-2:]  # low-level feature大小，aspp上采样目标大小
 
-        x = self.conv(x)
-        x = F.interpolate(x, origin_size, mode='bilinear', align_corners=False)  # 恢复spatial大小
+        high_level = self.aspp(high_level)  # 空间金字塔池化
+        high_level = F.interpolate(high_level, size=size2, mode='bilinear',
+                                   align_corners=False)  # 上采样和low-level的spatial大小一致
 
-        x = self.adjust_channel(x)
+        x = torch.cat([high_level, low_level], dim=1)  # cat融合一下
+        x = self.decode(x)  # 后面跟一系列3x3卷积，本实现选择2个3x3卷积
 
-        return x
+        return F.interpolate(x, size=size1, mode='bilinear', align_corners=False)  # 上采样和原图像大小一致
 
     pass
 
 
 if __name__ == '__main__':
-    in_data = torch.randint(0, 255, (3, 224, 224), dtype=torch.float32) \
-        .view((1, 3, 224, 224))
-    net = DeepLabV3P(n_class=2)
+    net = DeepLabV3P('resnet', 3, 8)
+    print(net)
 
-    # device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    # net.to(device)
-    # in_data = in_data.to(device)
+    in_data = torch.randint(0, 256, (4, 3, 224, 224), dtype=torch.float)
+    print('in data:', in_data.shape)
 
     out_data = net(in_data)
-    print(out_data.shape)
+    print('out_data:', out_data.shape)
     pass
