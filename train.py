@@ -133,6 +133,8 @@ def epoch_train(net, loss_func, optimizer, dataset, n_class):
         pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction，减少一个C维度 NHW
         # lb = lb.squeeze(1)  # label也减少一个C维度 NHW
         confusion_matrix += get_confusion_matrix(pred, lb, n_class)  # 计算混淆矩阵并累加
+
+        del im, lb, pred
         pass
     total_loss /= len(dataset)  # 求取一个epoch训练的loss
     mean_iou = get_miou(confusion_matrix, n_class)
@@ -159,6 +161,7 @@ def epoch_valid(net, loss_func, dataset, n_class):
         pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction
         # lb = lb.squeeze(1)  # label转换为numpy
         confusion_matrix += get_confusion_matrix(pred, lb, n_class)  # 计算混淆矩阵并累加
+        del im, lb, pred
         pass
     total_loss /= len(dataset)  # 求取一个epoch验证的loss
     mean_iou = get_miou(confusion_matrix, n_class)
@@ -175,7 +178,8 @@ def save_checkpoint(net, name, epoch):
     :return:
     """
     save_dir = os.path.join(os.getcwd(), 'weight')
-    save_dir = os.path.join(save_dir, name + '-' + '{:02d}'.format(epoch) + '.pkl')
+    filename = '{:s}-{:s}-epoch-{:02d}.pkl'.format(name, str(datetime.now()), epoch)
+    save_dir = os.path.join(save_dir, filename)
     torch.save(net.state_dict(), save_dir)
     pass
 
@@ -193,7 +197,7 @@ def train(net, loss_func, optimizer, train_data, valid_data, n_class, name, epoc
     :return:
     """
     for e in range(1, epochs + 1):
-        print('\nEpoch: {:d}'.format(e), end='|')
+        print('\nEpoch: {:02d}'.format(e), end='|')
 
         # 一个epoch训练
         t_loss, t_miou = epoch_train(net, loss_func, optimizer, train_data, n_class)
@@ -237,31 +241,36 @@ if __name__ == '__main__':
                                 batch_size=Config.TEST_BATCH_SIZE),
     }
 
-    make_data_list(train_path=Config.DATALIST_TRAIN,
-                   valid_path=Config.DATALIST_VALID,
-                   test_path=Config.DATALIST_TEST,
-                   train_rate=Config.TRAIN_RATE,
-                   valid_rate=Config.VALID_RATE)  # 生成csv文件
-
     num_class = 8
     # custom_model = FCN8s(n_class=num_class)
     # custom_model = unet(3, num_class, upmode='upsample', padding=1)
-    custom_model = unet_resnet('resnet50', 3, num_class, pretrained=True)
-    # custom_model = unet_base(3, num_class)
+    custom_model = unet_resnet('resnet152', 3, num_class, pretrained=True)
+    load_file = '/root/private/LaneSegmentation/weight/unet_resnet152-06.pkl'
+    if os.path.exists(load_file):  # 有训练好的模型就加载
+        print(load_file, 'exists!')
+        custom_model.load_state_dict(torch.load(load_file))
+    else:  # 否则重新生成数据训练
+        print('no load file')
+        s = input('reproduce for reproduce data list:')
+        if s == 'reproduce':
+            make_data_list(train_path=Config.DATALIST_TRAIN,
+                           valid_path=Config.DATALIST_VALID,
+                           test_path=Config.DATALIST_TEST,
+                           train_rate=Config.TRAIN_RATE,
+                           valid_rate=Config.VALID_RATE)  # 生成csv文件
     print(custom_model)
     custom_model.to(Config.DEVICE)
 
     # custom_loss_func = cross_entropy2d  # loss函数
-    custom_loss_func = MySoftmaxCrossEntropyLoss(num_class)
+    # custom_loss_func = MySoftmaxCrossEntropyLoss(num_class)
     # custom_loss_func = SoftIoULoss(num_class)
     # custom_loss_func = MulticlassDiceLoss()
-    # custom_loss_func = nn.CrossEntropyLoss()
+    custom_loss_func = nn.CrossEntropyLoss()
     custom_loss_func.to(Config.DEVICE)
 
     custom_optimizer = torch.optim.Adam(params=custom_model.parameters(),
-                                        lr=Config.LEARN_RATE,
-                                        weight_decay=Config.WEIGHT_DECAY)  # 将模型参数装入优化器
+                                        lr=Config.LEARN_RATE)  # 将模型参数装入优化器
 
     train(custom_model, custom_loss_func, custom_optimizer,
           data_loaders['train'], data_loaders['valid'],
-          n_class=num_class, name='unet_resnet50', epochs=Config.EPOCHS)  # 开始训（炼）练（丹）
+          n_class=num_class, name='unet_resnet152', epochs=Config.EPOCHS)  # 开始训（炼）练（丹）
