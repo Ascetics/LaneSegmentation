@@ -28,13 +28,14 @@ class Config(object):
 
     # 训练结果###################################################################
     WEIGHT_SAVE_PATH = '/root/private/LaneSegmentation/weight'  # weight保存路径
+    LOG_FILE = '/root/private/LaneSegmentation/weight/train.log' # 训练日志
     TEST_BATCH_SIZE = 1  # 测试集batch为1，这样可以一张图一张图的看
 
     # 超参数 ####################################################################
-    TRAIN_BATCH_SIZE = 1  # batch大小
+    TRAIN_BATCH_SIZE = 2  # batch大小
     LEARN_RATE = 0.003  # 学习率
     WEIGHT_DECAY = 0.0001
-    EPOCHS = 20  # 训练次数
+    EPOCHS = 40  # 训练次数
 
     # 数据处理 ####################################################################
     IMAGE_NORM_MEAN = [0.485, 0.456, 0.406]  # ImageNet统计的mean
