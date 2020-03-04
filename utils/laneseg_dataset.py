@@ -38,7 +38,7 @@ class LaneSegDataset(data.Dataset):
 
         image = Image.open(image_path)  # 读取image为PIL Image
         label = Image.open(label_path)  # 读取label为PIL Image
-        label = np.array(label)  # label从PIL Image转换为ndarray
+        label = np.asarray(label)  # label从PIL Image转换为ndarray
         label = id_to_trainid(label)  # label的Id转换为TrainId
         label = Image.fromarray(label)  # label从ndarray转换为PIL Image
 
