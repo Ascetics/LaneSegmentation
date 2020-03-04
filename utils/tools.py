@@ -1,5 +1,7 @@
+import os
 import random
 import time
+import torch
 from datetime import datetime
 from config import Config
 
@@ -35,6 +37,23 @@ def log(msg, logfile=Config.LOG_FILE):
     log_f.write(msg)  # 写到日志
     log_f.close()
     print(msg, end='')  # 打印到终端
+    pass
+
+
+def save_weight(net, name, epoch, save_dir=Config.WEIGHT_SAVE_PATH):
+    """
+    保存模型参数，模型参数文件名格式 {模型名}-{保存日期时间}-epoch-{第几个epoch}.pkl
+    :param net: 要保存参数的模型
+    :param name: 模型的名字
+    :param epoch: 训练到第几个epoch的参数
+    :param save_dir: 保存模型参数的路径，不包含文件名
+    :return:
+    """
+    filename = '{:s}-{:s}-epoch-{:02d}.pkl'.format(name, str(datetime.now()),
+                                                   epoch)  # 模型参数文件{模型名}-{保存日期时间}-epoch-{第几个epoch}.pkl
+    save_dir = os.path.join(save_dir, filename)  # 保存的文件绝对路径
+    torch.save(net.state_dict(), save_dir)  # 保存模型参数
+    log(save_dir)  # 日志记录
     pass
 
 
