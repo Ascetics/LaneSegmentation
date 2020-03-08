@@ -9,6 +9,13 @@ Murphy, K. P. (2012). Machine Learning: a Probabilistic Perspective. MIT Press, 
 
 适合入门的书：李沐的《动手学深度学习》；
 
+## 部署
+pytorch+flashk 轻量的，少用户的
+
+Nginx+GUnicorn+flask;flask还需要gevent，因为flask的webserver性能一般
+
+Docker;K8s可以自动化运维，管理很多Docker；
+
 # week7笔记
 ## 怎么写Readme
 1.写代码思路
