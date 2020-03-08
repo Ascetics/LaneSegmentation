@@ -14,16 +14,21 @@ class LaneSegDataset(data.Dataset):
     并输出image和label，都是PIL Image
     """
 
-    def __init__(self, data_list, image_transform=None, label_transform=None):
+    def __init__(self, data_list, image_op=None, label_op=None,
+                 image_transform=None, label_transform=None):
         """
         :param data_list: csv文件的绝对路径，csv文件有两列，第一列是image，第二列是label
-        :param image_transform: optional，对image做转换
-        :param label_transform: optional，对label做转换
+        :param image_op: 自定义API对image做转换，numpy操作
+        :param label_op: 自定义API对label做转换，numpy操作
+        :param image_transform: optional，用torchvision.transforms里的API对image的转换
+        :param label_transform: optional，用torchvision.transforms里的API对label的转换
         """
         super(LaneSegDataset, self).__init__()
         self._data_frame = pd.read_csv(data_list)  # 读取传入的csv文件形成data_frame
-        self._image_transform = image_transform  # 对image的转换
-        self._label_transform = label_transform  # 对label的转换
+        self._image_op = image_op
+        self._label_op = label_op
+        self._image_transform = image_transform
+        self._label_transform = label_transform
         pass
 
     def __len__(self):
@@ -37,15 +42,29 @@ class LaneSegDataset(data.Dataset):
         label_path = self._data_frame['label'][index]  # 记录下要返回的label的路径
 
         image = Image.open(image_path)  # 读取image为PIL Image
+        if self._image_op:
+            image = np.asarray(image)  # image从PIL Image转换为ndarray，HWC维度，0-255
+            for op in self._image_op:  # 遍历传入的操作
+                image = op(image)  # 对image数据增强
+                pass
+            image = Image.fromarray(
+                image.astype(np.uint8))  # image从ndarray转换为PIL Image 0-255，因为torchvision.transforms里的API在PIL Image上操作
+            pass
+
         label = Image.open(label_path)  # 读取label为PIL Image
         label = np.asarray(label)  # label从PIL Image转换为ndarray
-        label = id_to_trainid(label)  # label的Id转换为TrainId
-        label = Image.fromarray(label)  # label从ndarray转换为PIL Image
+        label = id_to_trainid(label)  # label的Id转换为TrainId，这一步必须加上
+        if self._image_op:
+            for op in self._label_op:  # 遍历传入的操作
+                label = op(label)  # 对label做修改
+                pass
+            pass
+        label = Image.fromarray(label.astype(np.uint8))  # label从ndarray转换为PIL Image
 
         if self._image_transform is not None:
-            image = self._image_transform(image)  # image更多的转换
+            image = self._image_transform(image)  # 用torchvision.transforms里的API对image更多的转换
         if self._label_transform is not None:
-            label = self._label_transform(label)  # label更多的转换
+            label = self._label_transform(label)  # 用torchvision.transforms里的API对label更多的转换
         return image, label
 
     pass
