@@ -56,7 +56,11 @@ def _get_image_label_dir():
 def make_data_list(train_path, valid_path, test_path, train_rate=0.7, valid_rate=0.2):
     """
     打乱顺序，生成data_list的csv文件。
-    :param save_path: 保存的路径
+    :param train_path: 训练集保存路径
+    :param valid_path: 验证集保存路径
+    :param test_path: 测试集保存路径
+    :param train_rate: 训练集占比，默认0.7
+    :param valid_rate: 验证集占比，默认0.2
     :return:
     """
     g = _get_image_label_dir()  # 获取生成器
@@ -90,9 +94,9 @@ if __name__ == '__main__':
     """
     单元测试
     """
-    make_data_list(train_path=Config.DATALIST_TRAIN,
-                   valid_path=Config.DATALIST_VALID,
-                   test_path=Config.DATALIST_TEST,
+    make_data_list(train_path=Config.DATA_LIST['train'],
+                   valid_path=Config.DATA_LIST['valid'],
+                   test_path=Config.DATA_LIST['test'],
                    train_rate=Config.TRAIN_RATE,
                    valid_rate=Config.VALID_RATE)  # 生成csv文件
 
