@@ -1,7 +1,13 @@
 # LaneSegmentation车道线检测
 
 # week6
-书籍：prml、http://www.deeplearningbook.org/
+书籍：
+不适合入门的书：
+Bishop.C.M（2006）的《Pattern Recognition & Machine Learning》；
+Murphy.K.P（2012）的《Machine Learning: a Probabilistic Perspective》；
+花书http://www.deeplearningbook.org/；
+
+适合入门的书：李沐的《动手学深度学习》；
 
 # week7笔记
 ## 怎么写Readme
