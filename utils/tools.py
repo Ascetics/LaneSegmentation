@@ -35,8 +35,9 @@ def log(msg, logfile=Config.LOG_FILE):
     """
     log_f = open(logfile, mode='a')
     log_f.write(msg)  # 写到日志
+    log_f.flush()  # 很有必要的马上写
     log_f.close()
-    print(msg, end='')  # 打印到终端
+    print(msg, end='', flush=True)  # 马上打印到终端
     pass
 
 
@@ -53,8 +54,7 @@ def save_weight(net, name, epoch, save_dir=Config.WEIGHT_SAVE_PATH):
                                                    epoch)  # 模型参数文件{模型名}-{保存日期时间}-epoch-{第几个epoch}.pkl
     save_dir = os.path.join(save_dir, filename)  # 保存的文件绝对路径
     torch.save(net.state_dict(), save_dir)  # 保存模型参数
-    log(save_dir)  # 日志记录
-    pass
+    return save_dir
 
 
 if __name__ == '__main__':
