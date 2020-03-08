@@ -19,7 +19,7 @@ from config import Config
 
 class SemanticSegmentationTrainer(object):
     def __init__(self, net, loss_func, optimizer, train_data, valid_data,
-                 n_class, device, name):
+                 n_class, device, model_name):
         """
         语义分割训练器
         :param net: 被训练的网络
@@ -29,7 +29,7 @@ class SemanticSegmentationTrainer(object):
         :param valid_data: 验证集
         :param n_class: n种分裂
         :param device: 训练用GPU或CPU
-        :param name: 保存模型用的名字
+        :param model_name: 保存模型用的名字
         """
         super(SemanticSegmentationTrainer, self).__init__()
         self.net = net
@@ -39,7 +39,7 @@ class SemanticSegmentationTrainer(object):
         self.valid_data = valid_data
         self.n_class = n_class
         self.device = device
-        self.name = name
+        self.name = model_name
         pass
 
     def _get_confusion_matrix(self, pred, label):
@@ -185,12 +185,12 @@ def get_data(data_type, batch_size=Config.TRAIN_BATCH_SIZE):
     return data_loader
 
 
-def get_model(model_name, in_channels, n_class, early_weight=None):
-    if model_name == 'fcn8s':
+def get_model(model_type, in_channels, n_class, early_weight=None):
+    if model_type == 'fcn8s':
         model = FCN8s(n_class)
-    elif model_name == 'resnet152':
+    elif model_type == 'resnet152':
         model = unet_resnet('resnet152', in_channels, n_class, pretrained=True)
-    elif model_name == 'deeplabv3p_resnet':
+    elif model_type == 'deeplabv3p_resnet':
         model = DeepLabV3P('resnet', in_channels, n_class)
     else:
         raise ValueError('model name error!')
@@ -237,5 +237,5 @@ if __name__ == '__main__':
                                           get_data('valid'),
                                           n_class=num_class,
                                           device=Config.DEVICE,
-                                          name=name)
+                                          model_name=name)
     trainer.train(epochs=1)  # 开始训（炼）练（丹）
