@@ -54,13 +54,13 @@ class LaneSegDataset(data.Dataset):
 if __name__ == '__main__':
     # 训练、验证、测试dataset
     image_datasets = {
-        'train': LaneSegDataset(data_list=Config.DATALIST_TRAIN,
+        'train': LaneSegDataset(data_list=Config.DATA_LIST['train'],
                                 image_transform=Config.IMAGE_TRANSFORMS['train'],
                                 label_transform=Config.LABEL_TRANSFORMS['train']),
-        'valid': LaneSegDataset(data_list=Config.DATALIST_VALID,
+        'valid': LaneSegDataset(data_list=Config.DATA_LIST['valid'],
                                 image_transform=Config.IMAGE_TRANSFORMS['valid'],
                                 label_transform=Config.LABEL_TRANSFORMS['valid']),
-        'test': LaneSegDataset(data_list=Config.DATALIST_TEST,
+        'test': LaneSegDataset(data_list=Config.DATA_LIST['test'],
                                image_transform=Config.IMAGE_TRANSFORMS['test'],
                                label_transform=Config.LABEL_TRANSFORMS['test']),
     }
