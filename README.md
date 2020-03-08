@@ -3,8 +3,8 @@
 # week6
 书籍：
 不适合入门的书：
-Bishop.C.M（2006）的《Pattern Recognition & Machine Learning》；
-Murphy.K.P（2012）的《Machine Learning: a Probabilistic Perspective》；
+Bishop, C. M. (2006). Pattern Recognition and Machine Learning. Springer.；
+Murphy, K. P. (2012). Machine Learning: a Probabilistic Perspective. MIT Press, Cambridge, MA, USA.；
 花书http://www.deeplearningbook.org/；
 
 适合入门的书：李沐的《动手学深度学习》；
