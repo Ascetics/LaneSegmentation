@@ -4,10 +4,11 @@ import torch.nn.functional as F
 
 
 class SemanticSegLoss(nn.Module):
-    def __init__(self, loss_type, weight=None, ignore_index=-100, reduction='mean'):
+    def __init__(self, loss_type, device, weight=None, ignore_index=-100, reduction='mean'):
         """
         :param loss_type: loss函数类型决定forward，可以取值
             'cross_entropy'、'dice'、'cross_entropy+dice'
+        :param device: 训练调用的设备GPU or CPU
         :param weight: 从F.cross_entropy抄过来的注释
             weight (Tensor, optional): a manual rescaling weight given to each
             class. If given, has to be a Tensor of size `C`
@@ -24,11 +25,12 @@ class SemanticSegLoss(nn.Module):
             specifying either of those two args will override :attr:`reduction`. Default: ``'mean'``
         """
         super(SemanticSegLoss, self).__init__()
+        self.loss_type = loss_type
+        self.device = device
+
         self.weight = weight
         self.ignore_index = ignore_index
         self.reduction = reduction
-
-        self.loss_type = loss_type
         pass
 
     def forward(self, output, label):
@@ -74,7 +76,8 @@ class SemanticSegLoss(nn.Module):
 
         probs = F.softmax(output, dim=1)  # 输出变成概率形式，表示对该类分类的概率
         # probs = F.sigmoid(output)
-        one_hot = torch.zeros(output.shape).scatter_(1, label.unsqueeze(1), 1)  # label[N,H,W]变成one-hot形式[N,C,H,W]
+        one_hot = torch.zeros(output.shape).to(self.device)
+        one_hot = one_hot.scatter_(1, label.unsqueeze(1), 1)  # label[N,H,W]变成one-hot形式[N,C,H,W]
         if self.ignore_index != -100:  # 将被忽略类别channel全部置0
             one_hot[:, self.ignore_index] = 0
 
