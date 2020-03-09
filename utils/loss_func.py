@@ -1,231 +1,128 @@
 import torch
 import torch.nn as nn
-import numpy as np
 import torch.nn.functional as F
-from config import Config
 
 
-class MySoftmaxCrossEntropyLoss(nn.Module):
-
-    def __init__(self, nbclasses):
-        super(MySoftmaxCrossEntropyLoss, self).__init__()
-        self.nbclasses = nbclasses
-
-    def forward(self, inputs, target):
-        if inputs.dim() > 2:
-            inputs = inputs.view(inputs.size(0), inputs.size(1), -1)  # N,C,H,W => N,C,H*W
-            inputs = inputs.transpose(1, 2)  # N,C,H*W => N,H*W,C
-            inputs = inputs.contiguous().view(-1, self.nbclasses)  # N,H*W,C => N*H*W,C
-        target = target.view(-1)
-        return nn.CrossEntropyLoss(reduction="mean")(inputs, target)
-
-
-class FocalLoss(nn.Module):
-
-    def __init__(self, gamma=0, alpha=None, size_average=True):
-        super(FocalLoss, self).__init__()
-        self.gamma = gamma
-        self.alpha = alpha
-        self.alpha = torch.tensor([alpha, 1 - alpha])
-        self.size_average = size_average
-
-    def forward(self, inputs, target):
-        if inputs.dim() > 2:
-            inputs = inputs
-            inputs = inputs.view(inputs.size(0), inputs.size(1), -1)  # N,C,H,W => N,C,H*W
-            inputs = inputs.transpose(1, 2)  # N,C,H*W => N,H*W,C
-            inputs = inputs.contiguous().view(-1, inputs.size(2))  # N,H*W,C => N*H*W,C
-        target = target.view(-1, 1)
-
-        logpt = F.log_softmax(inputs, dim=1)
-        logpt = logpt.gather(1, target)
-        logpt = logpt.view(-1)
-        pt = logpt.exp()
-
-        if self.alpha is not None:
-            if self.alpha.type() != inputs.data.type():
-                self.alpha = self.alpha.type_as(inputs.data)
-            at = self.alpha.gather(0, target.view(-1))
-            logpt = logpt * at
-        # mask = mask.view(-1)
-        loss = -1 * (1 - pt) ** self.gamma * logpt  # * mask
-        if self.size_average:
-            return loss.mean()
-        else:
-            return loss.sum()
-
-
-def make_one_hot(input, num_classes):
-    """Convert class index tensor to one hot encoding tensor.
-    Args:
-         input: A tensor of shape [N, 1, *]
-         num_classes: An int of number of class
-    Returns:
-        A tensor of shape [N, num_classes, *]
-    """
-    shape = np.array(input.shape)
-    shape[1] = num_classes
-    shape = tuple(shape)
-    result = torch.zeros(shape)
-    result = result.scatter_(1, input.cpu(), 1)
-
-    return result
-
-
-class BinaryDiceLoss(nn.Module):
-    """Dice loss of binary class
-    Args:
-        smooth: A float number to smooth loss, and avoid NaN error, default: 1
-        p: Denominator value: \sum{x^p} + \sum{y^p}, default: 2
-        predict: A tensor of shape [N, *]
-        target: A tensor of shape same with predict
-        reduction: Reduction method to apply, return mean over batch if 'mean',
-            return sum if 'sum', return a tensor of shape [N,] if 'none'
-    Returns:
-        Loss tensor according to arg reduction
-    Raise:
-        Exception if unexpected reduction
-    """
-
-    def __init__(self, smooth=1, p=2, reduction='mean'):
-        super(BinaryDiceLoss, self).__init__()
-        self.smooth = smooth
-        self.p = p
+class SemanticSegLoss(nn.Module):
+    def __init__(self, loss_type, weight=None, ignore_index=-100, reduction='mean'):
+        """
+        :param loss_type: loss函数类型决定forward，可以取值
+            'cross_entropy'、'dice'、'cross_entropy+dice'
+        :param weight: 从F.cross_entropy抄过来的注释
+            weight (Tensor, optional): a manual rescaling weight given to each
+            class. If given, has to be a Tensor of size `C`
+        :param ignore_index: 从F.cross_entropy抄过来的注释
+            ignore_index (int, optional): Specifies a target value that is ignored
+            and does not contribute to the input gradient. When :attr:`size_average` is
+          ``True``, the loss is averaged over non-ignored targets. Default: -100
+        :param reduction: 从F.cross_entropy抄过来的注释
+            reduction (string, optional): Specifies the reduction to apply to the output:
+            ``'none'`` | ``'mean'`` | ``'sum'``. ``'none'``: no reduction will be applied,
+            ``'mean'``: the sum of the output will be divided by the number of
+            elements in the output, ``'sum'``: the output will be summed. Note: :attr:`size_average`
+            and :attr:`reduce` are in the process of being deprecated, and in the meantime,
+            specifying either of those two args will override :attr:`reduction`. Default: ``'mean'``
+        """
+        super(SemanticSegLoss, self).__init__()
+        self.weight = weight
+        self.ignore_index = ignore_index
         self.reduction = reduction
 
-    def forward(self, predict, target):
-        assert predict.shape[0] == target.shape[0], "predict & target batch size don't match"
-        predict = predict.contiguous().view(predict.shape[0], -1)
-        target = target.contiguous().view(target.shape[0], -1)
-        num = 2 * torch.sum(torch.mul(predict, target), dim=1) + self.smooth
-        den = torch.sum(predict.pow(self.p) + target.pow(self.p), dim=1) + self.smooth
+        self.loss_type = loss_type
+        pass
 
-        loss = 1 - num / den
-
-        if self.reduction == 'mean':
-            return loss.mean()
-        elif self.reduction == 'sum':
-            return loss.sum()
-        elif self.reduction == 'none':
+    def forward(self, output, label):
+        """
+        语义分割loss计算
+        :param output: [N,C,H,W]，没有经过softmax的模型输出
+        :param label: [N,H,W]，label就是grand truth，非ont-hot编码
+        :return: loss
+        """
+        if self.loss_type == 'cross_entropy':
+            return self.cross_entropy(output, label)
+        elif self.loss_type == 'dice':
+            return self.dice(output, label)
+        elif self.loss_type == 'cross_entropy+dice':
+            loss = self.cross_entropy(output, label) + self.dice(output, label)
             return loss
         else:
-            raise Exception('Unexpected reduction {}'.format(self.reduction))
+            raise NotImplementedError
 
+    def dice(self, output, label):
+        """
+                    2|A*B|
+        dice 系数 = --------   表示A和B的相似程度，越接近1越相似
+                    |A|+|B|
 
-# class DiceLoss(nn.Module):
-#     """Dice loss, need one hot encode input
-#     Args:
-#         weight: An array of shape [num_classes,]
-#         ignore_index: class index to ignore
-#         predict: A tensor of shape [N, C, *]
-#         target: A tensor of same shape with predict
-#         other args pass to BinaryDiceLoss
-#     Return:
-#         same as BinaryDiceLoss
-#     """
-#
-#     def __init__(self, weight=None, ignore_index=None, **kwargs):
-#         super(DiceLoss, self).__init__()
-#         self.kwargs = kwargs
-#         self.weight = weight
-#         self.ignore_index = ignore_index
-#
-#     def forward(self, predict, target):
-#         assert predict.shape == target.shape, 'predict & target shape do not match'
-#         dice = BinaryDiceLoss(**self.kwargs)
-#         total_loss = 0
-#         predict = F.softmax(predict, dim=1)
-#
-#         for i in range(target.shape[1]):
-#             if i != self.ignore_index:
-#                 dice_loss = dice(predict[:, i], target[:, i])
-#                 if self.weight is not None:
-#                     assert self.weight.shape[0] == target.shape[1], \
-#                         'Expect weight shape [{}], get[{}]'.format(target.shape[1], self.weight.shape[0])
-#                     dice_loss *= self.weights[i]
-#                 total_loss += dice_loss
-#
-#         return total_loss / target.shape[1]
+                          2|A*B|
+        dice loss = 1 -  -------- 表示A和B越相似，loss就应该越小
+                          |A|+|B|
 
+                          1+2|A*B|
+        dice loss = 1 -  ---------- 有效防止分母为0
+                          1+|A|+|B|
 
-# 针对多分类问题，二分类问题更简单一点。
-class SoftIoULoss(nn.Module):
-    def __init__(self, n_classes):
-        super(SoftIoULoss, self).__init__()
-        self.n_classes = n_classes
+        :param output: [N,C,H,W]，没有经过softmax的模型输出
+        :param label: [N,H,W]，label就是grand truth，非ont-hot编码
+        :return:
+        """
+        assert output.shape[0] == label.shape[0]  # N相同
+        assert output.shape[2] == label.shape[1]  # H相同
+        assert output.shape[3] == label.shape[2]  # W相同
 
-    @staticmethod
-    def to_one_hot(tensor, n_classes):
-        n, h, w = tensor.size()
-        one_hot = torch.zeros(n, n_classes, h, w).to(Config.DEVICE).scatter_(1, tensor.view(n, 1, h, w), 1)
-        return one_hot
+        probs = F.softmax(output, dim=1)  # 输出变成概率形式，表示对该类分类的概率
+        # probs = F.sigmoid(output)
+        one_hot = torch.zeros(output.shape).scatter_(1, label.unsqueeze(1), 1)  # label[N,H,W]变成one-hot形式[N,C,H,W]
 
-    def forward(self, input, target):
-        # logit => N x Classes x H x W
-        # target => N x H x W
+        numerator = (probs * one_hot).sum(dim=(2, 3))  # [N,C] 计算分子|AB|
+        denominator = probs.sum(dim=(2, 3)) + one_hot.sum(dim=(2, 3))  # [N,C] 计算分母|A|+|B|
 
-        N = len(input)
+        if self.weight:  # 如果类别有权重
+            numerator = numerator * self.weight.view(1, -1)  # 从[C]看成维度[1,C]
+            denominator = denominator * self.weight.view(1, -1)  # 从[C]看成维度[1,C]
+            pass
+        smooth = 1.
+        loss = (smooth + 2. * numerator.sum(dim=1)) / (smooth + denominator.sum(dim=1))
+        loss = 1. - loss
 
-        pred = F.softmax(input, dim=1)
-        target_onehot = self.to_one_hot(target, self.n_classes)
-
-        # Numerator Product
-        inter = pred * target_onehot
-        # Sum over all pixels N x C x H x W => N x C
-        inter = inter.view(N, self.n_classes, -1).sum(2)
-
-        # Denominator
-        union = pred + target_onehot - (pred * target_onehot)
-        # Sum over all pixels N x C x H x W => N x C
-        union = union.view(N, self.n_classes, -1).sum(2)
-
-        loss = inter / (union + 1e-16)
-
-        # Return average loss over classes and batch
-        return -loss.mean()
-
-
-class DiceLoss(nn.Module):
-    def __init__(self):
-        super(DiceLoss, self).__init__()
-
-    def forward(self, input, target):
-        N = target.size(0)
-        smooth = 1
-
-        input_flat = input.view(N, -1)
-        target_flat = target.view(N, -1)
-
-        intersection = input_flat * target_flat
-
-        loss = 2 * (intersection.sum(1) + smooth) / (input_flat.sum(1) + target_flat.sum(1) + smooth)
-        loss = 1 - loss.sum() / N
-
+        if self.reduction == 'mean':  # N个平均
+            loss = loss.mean()
+            pass
         return loss
 
+    def cross_entropy(self, output, label):
+        """
+        :param output: [N,C,H,W]，没有经过softmax的模型输出
+        :param label: [N,H,W]，label就是grand truth，非ont-hot编码
+        :return: 交叉熵
+        """
+        return F.cross_entropy(output, label,
+                               weight=self.weight,
+                               ignore_index=self.ignore_index,
+                               reduction=self.reduction)
 
-class MulticlassDiceLoss(nn.Module):
-    def __init__(self):
-        super(MulticlassDiceLoss, self).__init__()
+    pass
 
-    def forward(self, input, target, weights=None):
 
-        n_class = input.shape[1]
-        target = self.to_one_hot(target, n_class)
+if __name__ == '__main__':
+    # a = torch.Tensor([[1., 2., 3.],
+    #                   [4., 5., 6.]])
+    # b = torch.Tensor([0.2, 0.7, 0.1])
+    # c = a * b
+    # print(c)
+    a = torch.randint(0, 5, (1, 2, 2, 2), dtype=torch.float, requires_grad=True) / 5
+    print(a)
+    b = torch.randint(0, 2, (1, 2, 2))
+    print(b)
 
-        dice = DiceLoss()
-        total_loss = 0
+    # dice = SemanticSegLoss(loss_type='dice')
+    # dloss = dice(a, b)
+    # print('dice', dloss.item())
+    # print('dice back', dloss.backward())
 
-        for i in range(n_class):
-            dice_loss = dice(input[:, i], target[:, i])
-            if weights is not None:
-                dice_loss *= weights[i]
-            total_loss += dice_loss
+    cd = SemanticSegLoss(loss_type='cross_entropy+dice')
+    cdloss = cd(a, b)
+    print('cd', cdloss.item())
+    print('cd back', cdloss.backward())
 
-        return total_loss
-
-    @staticmethod
-    def to_one_hot(tensor, n_classes):
-        n, h, w = tensor.size()
-        one_hot = torch.zeros(n, n_classes, h, w).to(Config.DEVICE).scatter_(1, tensor.view(n, 1, h, w), 1)
-        return one_hot
+    pass
