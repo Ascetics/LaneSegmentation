@@ -39,14 +39,16 @@ class SemanticSegLoss(nn.Module):
         :return: loss
         """
         if self.loss_type == 'cross_entropy':
-            return self.cross_entropy(output, label)
+            loss = self.cross_entropy(output, label)
         elif self.loss_type == 'dice':
-            return self.dice(output, label)
+            loss = self.dice(output, label)
         elif self.loss_type == 'cross_entropy+dice':
-            loss = self.cross_entropy(output, label) + self.dice(output, label)
-            return loss
+            loss_ce = self.cross_entropy(output, label)
+            loss_dice = self.dice(output, label)
+            loss = loss_ce + loss_dice
         else:
             raise NotImplementedError
+        return loss
 
     def dice(self, output, label):
         """
@@ -73,6 +75,8 @@ class SemanticSegLoss(nn.Module):
         probs = F.softmax(output, dim=1)  # 输出变成概率形式，表示对该类分类的概率
         # probs = F.sigmoid(output)
         one_hot = torch.zeros(output.shape).scatter_(1, label.unsqueeze(1), 1)  # label[N,H,W]变成one-hot形式[N,C,H,W]
+        if self.ignore_index != -100:  # 将被忽略类别channel全部置0
+            one_hot[:, self.ignore_index] = 0
 
         numerator = (probs * one_hot).sum(dim=(2, 3))  # [N,C] 计算分子|AB|
         denominator = probs.sum(dim=(2, 3)) + one_hot.sum(dim=(2, 3))  # [N,C] 计算分母|A|+|B|
@@ -96,29 +100,31 @@ class SemanticSegLoss(nn.Module):
         :param label: [N,H,W]，label就是grand truth，非ont-hot编码
         :return: 交叉熵
         """
-        return F.cross_entropy(output, label,
+        loss = F.cross_entropy(output, label,
                                weight=self.weight,
                                ignore_index=self.ignore_index,
                                reduction=self.reduction)
+        return loss
 
     pass
 
 
 if __name__ == '__main__':
-    # a = torch.Tensor([[1., 2., 3.],
-    #                   [4., 5., 6.]])
-    # b = torch.Tensor([0.2, 0.7, 0.1])
+    a = torch.Tensor([[1., 2., 3.],
+                      [4., 5., 6.]])
+    b = torch.Tensor([0.2, 0.7, 0.1])
     # c = a * b
     # print(c)
-    a = torch.randint(0, 5, (1, 2, 2, 2), dtype=torch.float, requires_grad=True) / 5
-    print(a)
-    b = torch.randint(0, 2, (1, 2, 2))
-    print(b)
 
+    # a = torch.randint(1, 5, (1, 3, 1, 2), dtype=torch.float, requires_grad=True) / 5
+    # print(a)
+    # b = torch.randint(1, 3, (1, 1, 2))
+    # print(b)
+    #
     # dice = SemanticSegLoss(loss_type='dice')
     # dloss = dice(a, b)
     # print('dice', dloss.item())
-    # print('dice back', dloss.backward())
+    # print('dice back', dloss.backward(retain_graph=True))
 
     cd = SemanticSegLoss(loss_type='cross_entropy+dice')
     cdloss = cd(a, b)
