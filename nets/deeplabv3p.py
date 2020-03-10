@@ -154,6 +154,14 @@ class DeepLabV3P(nn.Module):
                           nn.BatchNorm2d(n_class),
                           nn.ReLU(inplace=True), ]
         self.decode = nn.Sequential(*decode_modules)
+
+        # 初始化参数
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+            elif isinstance(m, nn.BatchNorm2d):
+                nn.init.constant_(m.weight, 1)
+                nn.init.constant_(m.bias, 0)
         pass
 
     def forward(self, x):
