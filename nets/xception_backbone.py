@@ -169,7 +169,7 @@ class _ConvExitBlock(nn.Module):
 
 
 class XceptionBackbone(nn.Module):
-    def __init__(self, in_channels=3, n_class=1000):
+    def __init__(self, in_channels=3):
         super(XceptionBackbone, self).__init__()
         # 以下Entry Flow
         conv1 = [nn.Conv2d(in_channels, 32, 3, stride=2, padding=1, bias=False),
@@ -206,10 +206,6 @@ class XceptionBackbone(nn.Module):
                  nn.BatchNorm2d(2048),
                  nn.ReLU(inplace=True), ]
         self.exit_conv3 = nn.Sequential(*conv3)
-
-        self.avgpool = nn.AdaptiveAvgPool2d(1)
-        self.fc = nn.Sequential(nn.Linear(2048, n_class),
-                                nn.ReLU(inplace=True))
 
         pass
 
