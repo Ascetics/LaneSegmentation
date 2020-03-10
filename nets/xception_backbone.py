@@ -213,31 +213,21 @@ class XceptionBackbone(nn.Module):
         # Entry Flow
 
         x = self.entry_conv1(x)  # 2x
-        print(x.shape)
         x = self.entry_conv2(x)
-        print(x.shape)
         x = self.entry_block1(x)  # 4x
-        print(x.shape)
         low_level_features = x  # low-level features
         x = self.entry_block2(x)  # 8x
-        print(x.shape)
         x = self.entry_block3(x)  # 16x
-        print(x.shape)
 
         # Middle Flow
         for block in self.middle_flow:
             x = block(x)  # 16x
-            print(x.shape)
 
         # Exit Flow
         x = self.exit_block(x)  # 32x
-        print(x.shape)
         x = self.exit_conv1(x)  # 32x
-        print(x.shape)
         x = self.exit_conv2(x)  # 32x
-        print(x.shape)
         x = self.exit_conv3(x)  # 32x
-        print(x.shape)
 
         # 输出主干特征x和low-level特征
         return x, low_level_features
