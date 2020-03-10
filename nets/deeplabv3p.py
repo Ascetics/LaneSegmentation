@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from nets.resnet_backbone import resnet18_backbone, resnet34_backbone
 from nets.resnet_backbone import resnet50_backbone, resnet101_backbone, resnet152_backbone
+from nets.xception_backbone import xception_backbone
 
 
 class ASPPConv1x1(nn.Sequential):
@@ -97,35 +98,39 @@ class ASPP(nn.Module):
     pass
 
 
-def resnet_backbone(in_channels, resnet_type='resnet101'):
+def get_backbone(in_channels, backbone_type='resnet101'):
     """
-    使用ResNet作为backbone
+    获取DeepLabV3+的Backbone
     :param in_channels: 输出channels也就是图像的channels
-    :param resnet_type: 默认和论文一致ResNet101
+    :param backbone_type: 推荐使用ResNet101或Xception作为DeepLabV3+的Backbone
     :return: 返回backbone，主干特征channels，low-level特征channels
     """
-    if resnet_type == 'resnet18':
+    if backbone_type == 'resnet18':
         backbone = resnet18_backbone(in_channels=in_channels)
         atrous_channels = 512
         low_level_channels = 64
-    elif resnet_type == 'resnet34':
+    elif backbone_type == 'resnet34':
         backbone = resnet34_backbone(in_channels=in_channels)
         atrous_channels = 512
         low_level_channels = 64
-    elif resnet_type == 'resnet50':
+    elif backbone_type == 'resnet50':
         backbone = resnet50_backbone(in_channels=in_channels)
         atrous_channels = 2048
         low_level_channels = 256
-    elif resnet_type == 'resnet101':
+    elif backbone_type == 'resnet101':
         backbone = resnet101_backbone(in_channels=in_channels)
         atrous_channels = 2048
         low_level_channels = 256
-    elif resnet_type == 'resnet152':
+    elif backbone_type == 'resnet152':
         backbone = resnet152_backbone(in_channels=in_channels)
         atrous_channels = 2048
         low_level_channels = 256
+    elif backbone_type == 'xception':
+        backbone = xception_backbone(in_channels=in_channels)
+        atrous_channels = 2048
+        low_level_channels = 128
     else:
-        raise ValueError('resnet type error!')
+        raise ValueError('backbone type error!')
     return backbone, atrous_channels, low_level_channels
 
 
@@ -135,10 +140,8 @@ class DeepLabV3P(nn.Module):
 
     def __init__(self, backbone_type, in_channels, n_class):
         super(DeepLabV3P, self).__init__()
-        if backbone_type == 'resnet':  # 目前只支持ResNet101作为backbone
-            backbone, aspp_in_channels, low_level_in_channels = resnet_backbone(in_channels)
-        else:
-            raise ValueError('backbone type error!')
+        backbone, aspp_in_channels, low_level_in_channels = get_backbone(in_channels, backbone_type)  # 取得backbone
+
         self.backbone = backbone
         self.aspp = ASPP(aspp_in_channels, self.aspp_out_channels)  # 论文建议channels=256
 
@@ -156,6 +159,10 @@ class DeepLabV3P(nn.Module):
         self.decode = nn.Sequential(*decode_modules)
 
         # 初始化参数
+        self._init_param()
+        pass
+
+    def _init_param(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d) or isinstance(m, nn.ConvTranspose2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -185,12 +192,18 @@ class DeepLabV3P(nn.Module):
 
 
 if __name__ == '__main__':
-    net = DeepLabV3P('resnet', 3, 8)
+    device = torch.device('cpu')
+    # device = torch.device('cuda:4')
+
+    # net = DeepLabV3P('resnet101', 3, 8)
+    net = DeepLabV3P('xception', 3, 8).to(device)
     print(net)
 
-    in_data = torch.randint(0, 256, (4, 3, 224, 224), dtype=torch.float)
+    in_data = torch.randint(0, 256, (4, 3, 768, 256), dtype=torch.float)
     print('in data:', in_data.shape)
+    in_data = in_data.to(device)
 
     out_data = net(in_data)
+    out_data = out_data.cpu()
     print('out_data:', out_data.shape)
     pass
