@@ -192,11 +192,11 @@ class DeepLabV3P(nn.Module):
 
 
 if __name__ == '__main__':
-    device = torch.device('cpu')
-    # device = torch.device('cuda:4')
+    # device = torch.device('cpu')
+    device = torch.device('cuda:4')
 
-    # net = DeepLabV3P('resnet101', 3, 8)
-    net = DeepLabV3P('xception', 3, 8).to(device)
+    # net = DeepLabV3P('resnet101', 3, n_class=8).to(device)
+    net = DeepLabV3P('xception', 3, n_class=8).to(device)
     print(net)
 
     in_data = torch.randint(0, 256, (4, 3, 768, 256), dtype=torch.float)
