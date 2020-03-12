@@ -1,5 +1,5 @@
 import torch
-import torchvision.transforms.functional as F
+import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
 import numpy as np
 import random
@@ -97,9 +97,9 @@ class PairAdjust(object):
         contrast_factor = random.uniform(*self.factors)
         saturation_factor = random.uniform(*self.factors)
 
-        image = F.adjust_brightness(image, brightness_factor)
-        image = F.adjust_contrast(image, contrast_factor)
-        image = F.adjust_saturation(image, saturation_factor)
+        image = TF.adjust_brightness(image, brightness_factor)
+        image = TF.adjust_contrast(image, contrast_factor)
+        image = TF.adjust_saturation(image, saturation_factor)
         return image, label
 
     pass
@@ -122,8 +122,8 @@ class PairResize(object):
         :param label: [H,W] PIL Image trainId
         :return: [H,W,C] PIL Image RGB,  [H,W] PIL Image trainId
         """
-        image = F.resize(image, self.size, interpolation=Image.BILINEAR)
-        label = F.resize(label, self.size, interpolation=Image.NEAREST)  # label要用邻近差值
+        image = TF.resize(image, self.size, interpolation=Image.BILINEAR)
+        label = TF.resize(label, self.size, interpolation=Image.NEAREST)  # label要用邻近差值
         return image, label
 
     pass
@@ -154,11 +154,11 @@ class PairNormalizeToTensor(object):
         # torchvision.transform的API，对PIL Image类型image归一化，也就是除以255
         # 并转为tensor，维度变为[C,H,W]
         # image [C,H,W]tensor RGB 0.0~1.0
-        image = F.to_tensor(image)
+        image = TF.to_tensor(image)
 
         # 正则化，x=(x-mean)/std
         # 只对image正则化, image [C,H,W]tensor RGB -1.0~1.0
-        image = F.normalize(image, self.mean, self.std)
+        image = TF.normalize(image, self.mean, self.std)
 
         # 先转为ndarray，再转为tensor，不归一化，维度保持不变
         # label [H,W]tensor trainId
