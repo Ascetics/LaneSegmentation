@@ -5,7 +5,8 @@ import numpy as np
 from torch.utils.data import DataLoader
 from PIL import Image
 
-from utils.augment import PairCrop, PairResize, PairAdjust, PairRandomLeftRightFlip, PairNormalizeToTensor
+from utils.augment import PairCrop, PairResize, PairAdjust, PairRandomHFlip, \
+    PairNormalizeToTensor, PairRandomFixErase
 from utils.process_label import id_to_trainid
 from config import Config
 
@@ -67,9 +68,10 @@ def get_data(data_type, crop_offset=(690, None), resize_to=256,
         transform = [
             PairCrop(offsets=crop_offset),  # 剪裁
             PairResize(size=resize_to),  # 等比缩放
-            PairRandomLeftRightFlip(),  # 随机左右翻转
+            PairRandomHFlip(),  # 随机左右翻转
             PairAdjust(),  # 调整亮度、对比度、饱和度
             PairNormalizeToTensor(),  # 归一化正则化，变成tensor
+            PairRandomFixErase(),  # 随机遮挡
         ]
     elif data_type == 'valid':
         transform = [
