@@ -1,3 +1,4 @@
+import torch
 import torchvision.transforms.functional as F
 import matplotlib.pyplot as plt
 import numpy as np
@@ -31,10 +32,10 @@ class PairCrop(object):
 
     def __call__(self, image, label):
         """
-        逐个剪裁图像
-        :param image: [H,W,C],PIL Image图像
-        :param label: [H,W,C],PIL Image图像
-        :return: 剪裁后的图像HWC
+        剪裁图像
+        :param image: [H,W,C] PIL Image RGB
+        :param label: [H,W] PIL Image trainId
+        :return: [H,W,C] PIL Image RGB,  [H,W] PIL Image trainId
         """
 
         image = np.asarray(image)
@@ -66,9 +67,9 @@ class PairRandomLeftRightFlip(object):
     def __call__(self, image, label):
         """
         随机图像左右翻转
-        :param image: [H,W,C],PIL Image图像
-        :param label: [H,W,C],PIL Image图像
-        :return:
+        :param image: [H,W,C] PIL Image RGB
+        :param label: [H,W] PIL Image trainId
+        :return: [H,W,C] PIL Image RGB,  [H,W] PIL Image trainId
         """
         if random.random() < 0.5:  # 50%的概率会翻转
             image = image.transpose(Image.FLIP_LEFT_RIGHT)  # PIL的接口，左右翻转，上下用FLIP_TOP_BOTTOM
@@ -87,9 +88,10 @@ class PairAdjust(object):
     def __call__(self, image, label):
         """
         调整亮度、对比度、饱和度
-        :param image: [H,W,C],PIL Image图像，只调整image
-        :param label: [H,W,C],PIL Image图像，不调整label
-        :return:
+        只调整image，不调整label
+        :param image: [H,W,C] PIL Image RGB 0~255
+        :param label: [H,W] PIL Image trainId
+        :return: [H,W,C] PIL Image RGB 0~255,  [H,W] PIL Image trainId
         """
         brightness_factor = random.uniform(*self.factors)
         contrast_factor = random.uniform(*self.factors)
@@ -104,10 +106,6 @@ class PairAdjust(object):
 
 
 class PairResize(object):
-    """
-    图像等比缩放
-    """
-
     def __init__(self, size):
         """
         图像等比缩放
@@ -120,18 +118,84 @@ class PairResize(object):
     def __call__(self, image, label):
         """
         图像等比缩放
-        :param image: [H,W,C],PIL Image图像，只调整image
-        :param label: [H,W,C],PIL Image图像，不调整label
-        :return:
+        :param image: [H,W,C] PIL Image RGB
+        :param label: [H,W] PIL Image trainId
+        :return: [H,W,C] PIL Image RGB,  [H,W] PIL Image trainId
         """
         image = F.resize(image, self.size, interpolation=Image.BILINEAR)
-        label = F.resize(label, self.size, interpolation=Image.NEAREST)  # label要用最近差值
+        label = F.resize(label, self.size, interpolation=Image.NEAREST)  # label要用邻近差值
+        return image, label
+
+    pass
+
+
+class PairNormalizeToTensor(object):
+    def __init__(self, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
+        """
+        IMAGE_NORM_MEAN = [0.485, 0.456, 0.406]  # ImageNet统计的RGB mean
+        IMAGE_NORM_STD = [0.229, 0.224, 0.225]  # ImageNet统计的RGB std
+        LABEL_NORM_MEAN = [0.5]  # ImageNet统计的GRAY mean
+        LABEL_NORM_STD = [0.5]  # ImageNet统计的GRAY std
+        :param mean: 正则化的平均值mean
+        :param std: 正则化的标准差std
+        """
+        super(PairNormalizeToTensor, self).__init__()
+        self.mean = mean
+        self.std = std
+        pass
+
+    def __call__(self, image, label):
+        """
+        归一化，只对image除以255，label不动
+        :param image: [H,W,C] PIL Image RGB 0~255
+        :param label: [H,W] PIL Image trainId
+        :return: [C,H,W] tensor RGB -1.0~0.0,  [H,W] tensor trainId
+        """
+        # torchvision.transform的API，对PIL Image类型image归一化，也就是除以255
+        # 并转为tensor，维度变为[C,H,W]
+        # image [C,H,W]tensor RGB 0.0~1.0
+        image = F.to_tensor(image)
+
+        # 正则化，x=(x-mean)/std
+        # 只对image正则化, image [C,H,W]tensor RGB -1.0~1.0
+        image = F.normalize(image, self.mean, self.std)
+
+        # 先转为ndarray，再转为tensor，不归一化，维度保持不变
+        # label [H,W]tensor trainId
+        label = torch.from_numpy(np.asarray(label))
+
         return image, label
 
     pass
 
 
 if __name__ == '__main__':
+    x = np.array([[[53, 170, 134],
+                   [92, 111, 202]],
+                  [[235, 126, 244],
+                   [107, 46, 15]]], dtype=np.uint8)  # 模拟一个RGB图像
+    y = np.array([[2, 4],
+                  [3, 5]], dtype=np.uint8)  # 模拟一个trainId的label
+    print('np', x)
+    print('np', y)
+
+    x = Image.fromarray(x)
+    y = Image.fromarray(y)
+    x, y = PairNormalizeToTensor()(x, y)  # 测试PairNormalizeToTensor
+    print('tensor', x)  # x应该是-1.0~1.0
+    print('tensor', y)  # y应该是trainId
+    """
+    tensor tensor([[[-1.2103, -0.5424],
+         [ 1.9064, -0.2856]],
+
+        [[ 0.9405, -0.0924],
+         [ 0.1702, -1.2304]],
+
+        [[ 0.5311,  1.7163],
+         [ 2.4483, -1.5430]]])
+    tensor tensor([[2, 4],
+    """
+
     im = Image.open('Z:/Python资料/AI/cv_lane_seg_初赛/'
                     'Road04/ColorImage_road04/ColorImage/Record002/Camera 6/'
                     '171206_054227243_Camera_6.jpg')
@@ -161,4 +225,8 @@ if __name__ == '__main__':
     ax[3].imshow(lb, cmap='gray')
     plt.tight_layout()
     plt.show()
+
+    im, lb = PairNormalizeToTensor()(im, lb)
+    print(im.shape, lb.shape)
+
     pass
