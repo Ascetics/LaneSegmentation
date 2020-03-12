@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 from PIL import Image
+import torchvision.transforms as tsfs
 
 
 class PairCrop(object):
@@ -40,7 +41,7 @@ class PairCrop(object):
 
         image = np.asarray(image)
         label = np.asarray(label)
-        assert image.shape[0] == label.shape[0] and image.shape[1] == label.shape[1]
+        assert image.shape[:2] == label.shape[:2]
 
         h, w = image.shape[0], image.shape[1]
         assert 0 <= self.start[0] < h and (self.stop[0] is None or 0 <= self.stop[0] < h)  # 剪裁大小不超过原图像大小
@@ -56,24 +57,81 @@ class PairCrop(object):
     pass
 
 
-class PairRandomLeftRightFlip(object):
-    def __init__(self):
+class PairCropTF(object):
+    def __init__(self, top=0, left=0, height=None, width=None):
         """
-        随机图像左右翻转
+        剪裁图像，这个不好用
+        :param top:
+        :param left:
+        :param height:
+        :param width:
         """
-        super(PairRandomLeftRightFlip, self).__init__()
+        super(PairCropTF, self).__init__()
+        assert 0 <= top and 0 <= left
+        assert height is None or 0 < height
+        assert width is None or 0 < width
+        self.top = top
+        self.left = left
+        self.height = height
+        self.width = width
         pass
 
     def __call__(self, image, label):
         """
-        随机图像左右翻转
+        剪裁图像
+        :param image: [H,W,C] PIL Image RGB
+        :param label: [H,W] PIL Image trainId
+        :return: [H,W,C] PIL Image RGB,  [H,W] PIL Image trainId、
+        """
+        assert image.size[:2] == label.size[:2]
+        w, h = image.size[:2]  # PIL Image是WH
+        assert self.height is None or self.top + self.height < h  # 剪裁大小不超过原图像大小
+        assert self.width is None or self.left + self.width < w
+
+        height = h - self.top if self.height is None else self.height  # None就剪裁到最后
+        width = w - self.left if self.width is None else self.width
+        image = TF.crop(image, self.top, self.left, height, width)
+        label = TF.crop(label, self.top, self.left, height, width)
+        return image, label
+
+    pass
+
+
+class PairRandomHFlip(object):
+    def __init__(self):
+        super(PairRandomHFlip, self).__init__()
+        pass
+
+    def __call__(self, image, label):
+        """
+        图像随机左右翻转
         :param image: [H,W,C] PIL Image RGB
         :param label: [H,W] PIL Image trainId
         :return: [H,W,C] PIL Image RGB,  [H,W] PIL Image trainId
         """
-        if random.random() < 0.5:  # 50%的概率会翻转
-            image = image.transpose(Image.FLIP_LEFT_RIGHT)  # PIL的接口，左右翻转，上下用FLIP_TOP_BOTTOM
-            label = label.transpose(Image.FLIP_LEFT_RIGHT)
+        if random.uniform(0, 1) < 0.5:  # 50%的概率会翻转
+            image = TF.hflip(image)  # 左右翻转
+            label = TF.hflip(label)
+        return image, label
+
+    pass
+
+
+class PairRandomVFlip(object):
+    def __init__(self):
+        super(PairRandomVFlip, self).__init__()
+        pass
+
+    def __call__(self, image, label):
+        """
+        图像随机上下翻转
+        :param image: [H,W,C] PIL Image RGB
+        :param label: [H,W] PIL Image trainId
+        :return: [H,W,C] PIL Image RGB,  [H,W] PIL Image trainId
+        """
+        if random.uniform(0, 1) < 0.5:  # 50%的概率会翻转
+            image = TF.vflip(image)  # 上下翻转
+            label = TF.vflip(label)
         return image, label
 
     pass
@@ -105,6 +163,32 @@ class PairAdjust(object):
     pass
 
 
+class PairAdjustGamma(object):
+    def __init__(self, gamma, gain=1):
+        """
+        Gamma矫正
+        Out = 255*gain*(in/255)^gamma
+        :param gamma: gamma 0。0~1.0
+        :param gain: gain
+        """
+        super(PairAdjustGamma, self).__init__()
+        self.gamma = gamma
+        self.gain = gain
+        pass
+
+    def __call__(self, image, label):
+        """
+        Gamma矫正
+        :param image: [H,W,C] PIL Image RGB 0~255
+        :param label: [H,W] PIL Image trainId
+        :return: [H,W,C] PIL Image RGB 0~255,  [H,W] PIL Image trainId
+        """
+        image = TF.adjust_gamma(image, self.gamma, self.gain)  # 只对image做gamma矫正
+        return image, label
+
+    pass
+
+
 class PairResize(object):
     def __init__(self, size):
         """
@@ -130,16 +214,18 @@ class PairResize(object):
 
 
 class PairNormalizeToTensor(object):
-    def __init__(self, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
+    def __init__(self, norm=True, mean=(0.485, 0.456, 0.406), std=(0.229, 0.224, 0.225)):
         """
         IMAGE_NORM_MEAN = [0.485, 0.456, 0.406]  # ImageNet统计的RGB mean
         IMAGE_NORM_STD = [0.229, 0.224, 0.225]  # ImageNet统计的RGB std
         LABEL_NORM_MEAN = [0.5]  # ImageNet统计的GRAY mean
         LABEL_NORM_STD = [0.5]  # ImageNet统计的GRAY std
+        :param norm: 是否正则化，默认是
         :param mean: 正则化的平均值mean
         :param std: 正则化的标准差std
         """
         super(PairNormalizeToTensor, self).__init__()
+        self.norm = norm
         self.mean = mean
         self.std = std
         pass
@@ -158,12 +244,43 @@ class PairNormalizeToTensor(object):
 
         # 正则化，x=(x-mean)/std
         # 只对image正则化, image [C,H,W]tensor RGB -1.0~1.0
-        image = TF.normalize(image, self.mean, self.std)
+        if self.norm:
+            image = TF.normalize(image, self.mean, self.std)
 
         # 先转为ndarray，再转为tensor，不归一化，维度保持不变
         # label [H,W]tensor trainId
         label = torch.from_numpy(np.asarray(label))
 
+        return image, label
+
+    pass
+
+
+class PairRandomFixErase(object):
+    def __init__(self, mask_size=64, value=0):
+        """
+        按照固定大小，随机遮挡图像中的某一块方形区域
+        :param mask_size: 被遮挡的区域大小，默认64x64
+        :param value: 被遮挡的部分用value值填充
+        """
+        super(PairRandomFixErase, self).__init__()
+        self.mask_size = mask_size
+        self.value = value
+        pass
+
+    def __call__(self, image, label):
+        """
+        按照固定大小，随机遮挡图像中的某一块方形区域
+        :param image: [C,H,W] tensor，必须是tensor
+        :param label: [H,W] tensor，必须是tensor
+        :return: [C,H,W] tensor,  [H,W] tensor
+        """
+        _, h, w = image.shape
+        top = random.randint(0, h - self.mask_size)  # 随机到遮挡部分的top
+        left = random.randint(0, w - self.mask_size)  # 随机到遮挡部分的left
+        if random.uniform(0, 1) < 0.5:  # 随机遮挡
+            image = TF.erase(image, top, left, self.mask_size, self.mask_size,
+                             v=self.value, inplace=True)
         return image, label
 
     pass
@@ -209,24 +326,35 @@ if __name__ == '__main__':
     ax[1].imshow(lb, cmap='gray')
 
     crop = PairCrop(offsets=(690, None), size=(None, None))
-    random_lr_flip = PairRandomLeftRightFlip()
-    adjust = PairAdjust()
-    resize = PairResize(256)
+    crop_tf = PairCropTF(690, 0, 1000, None)
+    random_hflip = PairRandomHFlip()
+    random_vflip = PairRandomVFlip()
+    adjust = PairAdjust(factors=(0.1, 1.5))
+    adjust_gamma = PairAdjustGamma(gamma=0.9)
+    resize = PairResize(size=256)
+    to_tensor = PairNormalizeToTensor(norm=False)
+    random_fix_crop = PairRandomFixErase()
     ts = [
         crop,
-        random_lr_flip,
-        adjust,
+        # crop_tf,
+        random_hflip,
+        # random_vflip,
+        # adjust,
+        adjust_gamma,
         resize,
+        to_tensor,
+        random_fix_crop,
     ]
     for t in ts:
         im, lb = t(im, lb)
         pass
+
+    print(im.shape, lb.shape)
+    im = tsfs.ToPILImage()(im).convert('RGB')
+
     ax[2].imshow(im)
     ax[3].imshow(lb, cmap='gray')
     plt.tight_layout()
     plt.show()
-
-    im, lb = PairNormalizeToTensor()(im, lb)
-    print(im.shape, lb.shape)
 
     pass
