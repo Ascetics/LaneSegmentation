@@ -50,7 +50,7 @@ def save_weight(net, name, epoch, save_dir=Config.WEIGHT_SAVE_PATH):
     :param save_dir: 保存模型参数的路径，不包含文件名
     :return:
     """
-    filename = '{:s}-{:s}-epoch-{:02d}.pkl'.format(name, str(datetime.now()),
+    filename = '{:s}-{:s}-epoch-{:02d}.pth'.format(name, str(datetime.now()),
                                                    epoch)  # 模型参数文件{模型名}-{保存日期时间}-epoch-{第几个epoch}.pkl
     save_dir = os.path.join(save_dir, filename)  # 保存的文件绝对路径
     torch.save(net.state_dict(), save_dir)  # 保存模型参数
