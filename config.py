@@ -1,8 +1,4 @@
 import torch
-import torchvision.transforms as tsfs
-import numpy as np
-from utils.augment import PairCrop, PairRandomLeftRightFlip, PairAdjust
-from PIL import Image
 
 
 class Config(object):
@@ -12,7 +8,7 @@ class Config(object):
     # 设备   ####################################################################
     # DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # DEVICE = torch.device('cpu')
-    DEVICE = torch.device('cuda:3')
+    DEVICE = torch.device('cuda:7')
 
     # 数据集 ####################################################################
     DATASETS_ROOT = '/root/private/torch_datasets'  # Pytorch数据集根目录
