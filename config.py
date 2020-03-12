@@ -23,7 +23,8 @@ class Config(object):
 
     # 超参数 ####################################################################
     TRAIN_BATCH_SIZE = 2  # batch大小
-    LEARN_RATE = 0.003  # 学习率
+    LR = 0.003  # 学习率
+    LR_MIN = 1e-6  # 最小学习率
     WEIGHT_DECAY = 0.0001
     EPOCHS = 50  # 训练次数
 
@@ -31,8 +32,8 @@ class Config(object):
     IMAGE_BASE = '/root/data/LaneSeg/Image_Data'  # image文件的根目录
     LABEL_BASE = '/root/data/LaneSeg/Gray_Label'  # label文件的根目录
 
-    TRAIN_RATE = 0.00035  # 数据集划分，训练集占整个数据集的比例
-    VALID_RATE = 0.0001  # 数据集划分，验证集占整个数据集的比例
+    TRAIN_RATE = 0.35  # 数据集划分，训练集占整个数据集的比例
+    VALID_RATE = 0.1  # 数据集划分，验证集占整个数据集的比例
 
     DATA_LIST = {
         'train': '/root/private/LaneSegmentation/data_list/train.csv',  # 车道线分割训练集csv文件路径
