@@ -5,14 +5,14 @@ import random
 from PIL import Image
 
 
-class Crop(object):
+class PairCrop(object):
     def __init__(self, offsets=None, size=None):
         """
         剪裁图像
         :param offsets: 剪裁的偏移量，(H,W)类型，None表示不偏移
         :param size: 剪裁的大小，(H,W)类型，None表示不剪裁
         """
-        super(Crop, self).__init__()
+        super(PairCrop, self).__init__()
         # 偏移量可以为空或大于等于0，None或等于0表示不偏移
         assert offsets is None or (offsets[0] is None or offsets[0] >= 0) and (offsets[1] is None or offsets[1] >= 0)
         # 剪裁的大小，必须是正数或者None不剪裁
@@ -55,12 +55,12 @@ class Crop(object):
     pass
 
 
-class RandomLeftRightFlip(object):
+class PairRandomLeftRightFlip(object):
     def __init__(self):
         """
         随机图像左右翻转
         """
-        super(RandomLeftRightFlip, self).__init__()
+        super(PairRandomLeftRightFlip, self).__init__()
         pass
 
     def __call__(self, image, label):
@@ -78,9 +78,9 @@ class RandomLeftRightFlip(object):
     pass
 
 
-class Adjust(object):
+class PairAdjust(object):
     def __init__(self, factors=(0.3, 2.)):
-        super(Adjust, self).__init__()
+        super(PairAdjust, self).__init__()
         self.factors = factors
         pass
 
@@ -103,6 +103,34 @@ class Adjust(object):
     pass
 
 
+class PairResize(object):
+    """
+    图像等比缩放
+    """
+
+    def __init__(self, size):
+        """
+        图像等比缩放
+        :param size: 图像等比缩放后，短边的大小
+        """
+        super(PairResize, self).__init__()
+        self.size = size
+        pass
+
+    def __call__(self, image, label):
+        """
+        图像等比缩放
+        :param image: [H,W,C],PIL Image图像，只调整image
+        :param label: [H,W,C],PIL Image图像，不调整label
+        :return:
+        """
+        image = F.resize(image, self.size, interpolation=Image.BILINEAR)
+        label = F.resize(label, self.size, interpolation=Image.NEAREST)  # label要用最近差值
+        return image, label
+
+    pass
+
+
 if __name__ == '__main__':
     im = Image.open('Z:/Python资料/AI/cv_lane_seg_初赛/'
                     'Road04/ColorImage_road04/ColorImage/Record002/Camera 6/'
@@ -116,13 +144,15 @@ if __name__ == '__main__':
     ax[0].imshow(im)
     ax[1].imshow(lb, cmap='gray')
 
-    crop = Crop(offsets=(690, None), size=(None, None))
-    random_lr_flip = RandomLeftRightFlip()
-    adjust = Adjust()
+    crop = PairCrop(offsets=(690, None), size=(None, None))
+    random_lr_flip = PairRandomLeftRightFlip()
+    adjust = PairAdjust()
+    resize = PairResize(256)
     ts = [
         crop,
         random_lr_flip,
         adjust,
+        resize,
     ]
     for t in ts:
         im, lb = t(im, lb)
