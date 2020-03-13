@@ -8,7 +8,7 @@ class Config(object):
     # 设备   ####################################################################
     # DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # DEVICE = torch.device('cpu')
-    DEVICE = torch.device('cuda:7')
+    DEVICE = torch.device('cuda:5')
 
     # 数据集 ####################################################################
     DATASETS_ROOT = '/root/private/torch_datasets'  # Pytorch数据集根目录
@@ -18,7 +18,7 @@ class Config(object):
     LOG_FILE = '/root/private/LaneSegmentation/weight/train.log'  # 训练日志
 
     # 超参数 ####################################################################
-    TRAIN_BATCH_SIZE = 2  # batch大小
+    TRAIN_BATCH_SIZE = 8  # batch大小
     LR = 0.003  # 学习率
     LR_MIN = 1e-6  # 最小学习率
     WEIGHT_DECAY = 0.0001
@@ -28,8 +28,8 @@ class Config(object):
     IMAGE_BASE = '/root/data/LaneSeg/Image_Data'  # image文件的根目录
     LABEL_BASE = '/root/data/LaneSeg/Gray_Label'  # label文件的根目录
 
-    TRAIN_RATE = 0.35  # 数据集划分，训练集占整个数据集的比例
-    VALID_RATE = 0.1  # 数据集划分，验证集占整个数据集的比例
+    TRAIN_RATE = 0.7  # 数据集划分，训练集占整个数据集的比例
+    VALID_RATE = 0.2  # 数据集划分，验证集占整个数据集的比例
 
     DATA_LIST = {
         'train': '/root/private/LaneSegmentation/data_list/train.csv',  # 车道线分割训练集csv文件路径
