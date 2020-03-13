@@ -75,11 +75,13 @@ def get_data(data_type, crop_offset=(690, None), resize_to=256,
         ]
     elif data_type == 'valid':
         transform = [
+            PairCrop(offsets=crop_offset),  # 剪裁
             PairResize(size=resize_to),  # 等比缩放
             PairNormalizeToTensor(),  # 归一化正则化，变成tensor
         ]
     elif data_type == 'test':
         transform = [
+            PairCrop(offsets=crop_offset),  # 剪裁
             PairResize(size=resize_to),  # 等比缩放
             PairNormalizeToTensor(),  # 归一化正则化，变成tensor
         ]
