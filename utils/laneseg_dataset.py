@@ -83,7 +83,7 @@ def get_data(data_type, crop_offset=(690, None), resize_to=256,
         transform = [
             PairCrop(offsets=crop_offset),  # 剪裁
             PairResize(size=resize_to),  # 等比缩放
-            PairNormalizeToTensor(),  # 归一化正则化，变成tensor
+            PairNormalizeToTensor(norm=False),  # 归一化但不正则化，变成tensor
         ]
     else:
         raise ValueError('data type error!')
