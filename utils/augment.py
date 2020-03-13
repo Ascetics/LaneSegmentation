@@ -192,12 +192,18 @@ class PairAdjustGamma(object):
 class PairResize(object):
     def __init__(self, size=None):
         """
-        图像等比缩放
-        :param size: 图像等比缩放后，短边的大小，None不缩放
+        图像缩放
+        :param size: 图像等比缩放后的大小
+            如果是None，不缩放；
+            如果是int，那么等比例缩放，size是缩放以后短边的长度；
+            如果是tuple，那么size就是缩放后的大小(H,W)；
         """
         super(PairResize, self).__init__()
-        assert size is None or isinstance(size, int)
-        self.size = size
+        assert size is None or isinstance(size, int) or isinstance(size, tuple)
+        if isinstance(size, tuple):
+            self.size = (size[1], size[0])  # 输入(H,W)，PIL要求(W,H)
+        else:
+            self.size = size
         pass
 
     def __call__(self, image, label):
@@ -207,9 +213,15 @@ class PairResize(object):
         :param label: [H,W] PIL Image trainId
         :return: [H,W,C] PIL Image RGB,  [H,W] PIL Image trainId
         """
-        if self.size is not None:
+        if self.size is None:  # 不缩放
+            return image, label
+
+        if isinstance(self.size, int):  # 等比例缩放
             image = TF.resize(image, self.size, interpolation=Image.BILINEAR)
             label = TF.resize(label, self.size, interpolation=Image.NEAREST)  # label要用邻近差值
+        elif isinstance(self.size, tuple):  # 指定输出大小的缩放
+            image = image.resize(self.size, resample=Image.BILINEAR)
+            label = label.resize(self.size, resample=Image.NEAREST)  # label要用邻近差值
         return image, label
 
     pass
