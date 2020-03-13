@@ -73,25 +73,28 @@ def get_data(data_type, crop_offset=(690, None), resize_to=256,
             PairNormalizeToTensor(),  # 归一化正则化，变成tensor
             PairRandomFixErase(),  # 随机遮挡
         ]
+        shuffle = True
     elif data_type == 'valid':
         transform = [
             PairCrop(offsets=crop_offset),  # 剪裁
             PairResize(size=resize_to),  # 等比缩放
             PairNormalizeToTensor(),  # 归一化正则化，变成tensor
         ]
+        shuffle = True
     elif data_type == 'test':
         transform = [
             PairCrop(offsets=crop_offset),  # 剪裁
             PairResize(size=resize_to),  # 等比缩放
             PairNormalizeToTensor(norm=False),  # 归一化但不正则化，变成tensor
         ]
+        shuffle = False
     else:
         raise ValueError('data type error!')
 
     image_dataset = LaneSegDataset(Config.DATA_LIST[data_type],
                                    transform)
     data_loader = DataLoader(image_dataset, batch_size=batch_size,
-                             drop_last=True)
+                             shuffle=shuffle, drop_last=True)
     return data_loader
 
 
