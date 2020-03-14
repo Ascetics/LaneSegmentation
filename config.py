@@ -8,7 +8,7 @@ class Config(object):
     # 设备   ####################################################################
     # DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     # DEVICE = torch.device('cpu')
-    DEVICE = torch.device('cuda:5')
+    DEVICE = torch.device('cuda:6')
 
     # 数据集 ####################################################################
     DATASETS_ROOT = '/root/private/torch_datasets'  # Pytorch数据集根目录
