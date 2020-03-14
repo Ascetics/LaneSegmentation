@@ -24,6 +24,24 @@ model.to(device)  # 模型装入GPU
 test_set = LaneSegDataset(Config.DATA_LIST['test'])  # 不剪裁，不缩放的测试集，读取PIL Image
 
 
+def _get_miou(pred, label, n_class=8):
+    """
+    计算IoU
+    :param pred: [H,W]ndarray
+    :param label: [H,W]ndarray
+    :return: float, Mean Intersection Over Union of pred and label
+    """
+    pred = np.asarray(pred)
+    label = np.asarray(label)
+    assert pred.shape == label.shape
+
+    mask = (label >= 0) & (label < n_class)
+    cm = np.bincount(label[mask] * n_class + pred[mask], minlength=n_class ** 2)  # 计算混淆矩阵
+    cm = cm.reshape((n_class, n_class))  # 计算混淆矩阵
+    iou = np.diag(cm) / (np.sum(cm, axis=0) + np.sum(axis=1) - np.diag(cm))
+    return np.nanmean(iou)
+
+
 def predict(image, label, resize_to=256, name=None):
     _, h0 = image.size[:2]  # 记录下原来大小,PIL Image大小W,H
     pair_resize = PairResize(size=resize_to)
@@ -52,7 +70,10 @@ def predict(image, label, resize_to=256, name=None):
     pred = np.argmax(pred, axis=0)  # [H,W]ndarray
 
     supplement = np.zeros((offset, w), dtype=np.long)  # [H,W]ndarray,补充成背景
-    pred = np.append(supplement, pred, axis=0)  # [H,W]ndarray,在H方向cat，给pred补充被剪裁的背景
+    pred = np.append(supplement, pred, axis=0)  # 最终的估值，[H,W]ndarray,在H方向cat，给pred补充被剪裁的背景
+
+    mIoU = _get_miou(pred, label)  # 计算mIoU
+    fig.suptitle('mIoU:{:.4f}'.format(mIoU), fontsize=16)  # 用mIoU作为大标题
 
     mask = (pred != 0).astype(np.long) * 255  # H,W]ndarray,alpha融合的mask
 
