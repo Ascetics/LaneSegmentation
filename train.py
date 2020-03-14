@@ -1,17 +1,15 @@
 import os
 import numpy as np
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
 
 from datetime import datetime
 
 from nets.fcn8s import FCN8s
 from nets.unet import unet_resnet
 from nets.deeplabv3p import DeepLabV3P
-from utils.laneseg_dataset import LaneSegDataset
-from utils.loss_func import MySoftmaxCrossEntropyLoss, FocalLoss, DiceLoss, SoftIoULoss, MulticlassDiceLoss
+from utils.laneseg_dataset import get_data
+from utils.loss_func import SemanticSegLoss
 from utils.make_list import make_data_list
 from utils.tools import log, epoch_timer, save_weight
 from config import Config
@@ -19,7 +17,7 @@ from config import Config
 
 class SemanticSegmentationTrainer(object):
     def __init__(self, net, loss_func, optimizer, train_data, valid_data,
-                 n_class, device, model_name):
+                 n_class, device, model_name, lr_scheduler=None):
         """
         语义分割训练器
         :param net: 被训练的网络
@@ -30,6 +28,7 @@ class SemanticSegmentationTrainer(object):
         :param n_class: n种分裂
         :param device: 训练用GPU或CPU
         :param model_name: 保存模型用的名字
+        :param lr_scheduler: 学习率调节器
         """
         super(SemanticSegmentationTrainer, self).__init__()
         self.net = net
@@ -40,6 +39,7 @@ class SemanticSegmentationTrainer(object):
         self.n_class = n_class
         self.device = device
         self.name = model_name
+        self.lr_scheduler = lr_scheduler
         pass
 
     def _get_confusion_matrix(self, pred, label):
@@ -80,7 +80,7 @@ class SemanticSegmentationTrainer(object):
         return np.nanmean(iou)
 
     @epoch_timer
-    def _epoch_train(self):
+    def _epoch_train(self, epoch):
         """
         训练一个epoch
         :return:
@@ -101,14 +101,17 @@ class SemanticSegmentationTrainer(object):
             total_loss += loss.detach().item()  # 累加训练batch的loss
             loss.backward()  # 反向传播
             self.optimizer.step()  # 优化器迭代
+            # self._adjust_lr(epoch, i, len(self.train_data))  # 优化器迭代后调整学习率
 
             pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction，减少一个C维度 NHW
             # lb = lb.squeeze(1)  # label也减少一个C维度 NHW
             confusion_matrix += self._get_confusion_matrix(pred, lb)  # 计算混淆矩阵并累加
             del im, lb, pred  # 节省内存
+
             pass
         total_loss /= len(self.train_data)  # 求取一个epoch训练的loss
         mean_iou = self._get_miou(confusion_matrix)
+
         return total_loss, mean_iou
 
     @epoch_timer
@@ -122,22 +125,23 @@ class SemanticSegmentationTrainer(object):
         total_loss = 0.  # 一个epoch验证的loss和正确率acc
         confusion_matrix = torch.zeros((self.n_class, self.n_class)).to(self.device)
 
-        for i, (im, lb) in enumerate(self.valid_data):
-            im = im.to(self.device)  # 一个验证batch image
-            lb = lb.to(self.device)  # 一个验证batch label
+        with torch.no_grad():  # 验证阶段，不需要计算梯度，节省内存
+            for i, (im, lb) in enumerate(self.valid_data):
+                im = im.to(self.device)  # 一个验证batch image
+                lb = lb.to(self.device)  # 一个验证batch label
 
-            output = self.net(im)  # 前项传播，计算一个验证batch的output
-            loss = self.loss_func(output, lb.type(torch.int64))  # 计算一个验证batch的loss
-            total_loss += loss.detach().item()  # 累加验证batch的loss
+                output = self.net(im)  # 前项传播，计算一个验证batch的output
+                loss = self.loss_func(output, lb.type(torch.int64))  # 计算一个验证batch的loss
+                total_loss += loss.detach().item()  # 累加验证batch的loss
 
-            # 验证的时候不进行反向传播
-            pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction
-            confusion_matrix += self._get_confusion_matrix(pred, lb)  # 计算混淆矩阵并累加
-            del im, lb, pred  # 节省内存
-            pass
-        total_loss /= len(self.valid_data)  # 求取一个epoch验证的loss
-        mean_iou = self._get_miou(confusion_matrix)
-        return total_loss, mean_iou
+                # 验证的时候不进行反向传播
+                pred = torch.argmax(F.softmax(output, dim=1), dim=1)  # 将输出转化为dense prediction
+                confusion_matrix += self._get_confusion_matrix(pred, lb)  # 计算混淆矩阵并累加
+                del im, lb, pred  # 节省内存
+                pass
+            total_loss /= len(self.valid_data)  # 求取一个epoch验证的loss
+            mean_iou = self._get_miou(confusion_matrix)
+            return total_loss, mean_iou
 
     def train(self, epochs=Config.EPOCHS):
         """
@@ -151,9 +155,14 @@ class SemanticSegmentationTrainer(object):
             log('\n')
 
             # 一个epoch训练
-            t_loss, t_miou = self._epoch_train()
+            t_loss, t_miou = self._epoch_train(epoch=e)
             train_str = 'Train Loss: {:.4f}|Train mIoU: {:.4f}|'.format(t_loss, t_miou)
             log(train_str)
+
+            # 每个epoch的参数都保存
+            save_dir = save_weight(self.net, self.name, e)
+            log(save_dir)  # 日志记录
+            log('\n')
 
             # 一个epoch验证
             v_loss, v_miou = self._epoch_valid()
@@ -161,28 +170,28 @@ class SemanticSegmentationTrainer(object):
             log(valid_str)
             log('\n')
 
-            save_dir = save_weight(self.net, self.name, e)  # 每个epoch的参数都保存
-            log(save_dir)  # 日志记录
-            log('\n')
             pass
         pass
 
+    def _adjust_lr(self, epoch, iter_no, iter_count):
+        """
+        调整学习率
+        :param epoch: 第几个epoch
+        :param iter_no: 每个epoch第几个batch
+        :param iter_count: 一共多少个batch
+        :return:
+        """
+        warm_epochs = 2
+        if 1 <= epoch <= warm_epochs:  # 前几个epoch逐渐升高学习率
+            rate = ((epoch - 1) * iter_count + iter_no) / (warm_epochs * iter_count)
+            lr = Config.LR_MIN + (Config.LR - Config.LR_MIN) * rate
+            for param_group in self.optimizer.param_groups:
+                param_group['lr'] = lr
+                pass
+        # print(epoch, iter_no, self.optimizer.param_groups[0]['lr'])
+        pass
+
     pass
-
-
-def get_data(data_type, batch_size=Config.TRAIN_BATCH_SIZE):
-    """
-    获取数据集
-    :param data_type: 可以是'train', 'valid', 'test'数据集
-    :param batch_size: 默认和配置文件里的BATCH_SIZE一致
-    :return: 数据集DataLoader
-    """
-    assert data_type in ('train', 'valid', 'test')
-    image_dataset = LaneSegDataset(Config.DATA_LIST[data_type],
-                                   Config.IMAGE_TRANSFORMS[data_type],
-                                   Config.LABEL_TRANSFORMS[data_type])
-    data_loader = DataLoader(image_dataset, batch_size=batch_size)
-    return data_loader
 
 
 def get_model(model_type, in_channels, n_class, early_weight=None):
@@ -191,51 +200,61 @@ def get_model(model_type, in_channels, n_class, early_weight=None):
     elif model_type == 'resnet152':
         model = unet_resnet('resnet152', in_channels, n_class, pretrained=True)
     elif model_type == 'deeplabv3p_resnet':
-        model = DeepLabV3P('resnet', in_channels, n_class)
+        model = DeepLabV3P('resnet101', in_channels, n_class)
+    elif model_type == 'deeplabv3p_xception':
+        model = DeepLabV3P('xception', in_channels, n_class)
     else:
         raise ValueError('model name error!')
 
-    if early_weight:
-        if os.path.exists(early_weight):  # 有训练好的模型就加载
-            print(early_weight, 'exists!')
-            model.load_state_dict(torch.load(early_weight))
-        else:  # 否则重新生成数据训练
-            print('no early weight')
-            s = input('reproduce for regenerate data list:')
-            if s == 'reproduce':  # 输入reproduce重新生成data list
-                make_data_list(train_path=Config.DATA_LIST['train'],
-                               valid_path=Config.DATA_LIST['valid'],
-                               test_path=Config.DATA_LIST['test'],
-                               train_rate=Config.TRAIN_RATE,
-                               valid_rate=Config.VALID_RATE)  # 生成csv文件
+    if early_weight and os.path.exists(early_weight):
+        # 有训练好的模型就加载
+        print(early_weight, 'exists!')
+        model.load_state_dict(torch.load(early_weight))
+    else:  # 否则重新生成数据训练
+        print('no early weight')
+        s = input('r for regenerate data list:')
+        if s == 'r':  # 输入reproduce重新生成data list
+            make_data_list(train_path=Config.DATA_LIST['train'],
+                           valid_path=Config.DATA_LIST['valid'],
+                           test_path=Config.DATA_LIST['test'],
+                           train_rate=Config.TRAIN_RATE,
+                           valid_rate=Config.VALID_RATE)  # 生成csv文件
         pass
 
     return model
 
 
 if __name__ == '__main__':
-    name = 'deeplabv3p_resnet'
+    # name = 'deeplabv3p_resnet'
+    # load_file = None
+    # load_file = '/root/private/LaneSegmentation/weight/deeplabv3p_resnet-2020-03-10 15:09:24.382447-epoch-01.pkl'
+
+    # name = 'fcn8s'
+    # load_file = None
+
+    name = 'deeplabv3p_xception'
+    # load_file = None
+    load_file = ('/root/private/LaneSegmentation/weight/'
+                 'deeplabv3p_xception-2020-03-14 10:29:13.577643-epoch-01.pth')
+
     num_class = 8
-    load_file = '/root/private/LaneSegmentation/weight/deeplabv3p_resnet-2020-03-04 05:45:34.725327-epoch-40.pkl'
     custom_model = get_model(name, 3, num_class, load_file)
     custom_model.to(Config.DEVICE)
 
-    # custom_loss_func = cross_entropy2d  # loss函数
-    # custom_loss_func = MySoftmaxCrossEntropyLoss(num_class)
-    # custom_loss_func = SoftIoULoss(num_class)
-    # custom_loss_func = MulticlassDiceLoss()
-    custom_loss_func = nn.CrossEntropyLoss()
+    custom_loss_func = SemanticSegLoss('cross_entropy+dice', Config.DEVICE)
     custom_loss_func.to(Config.DEVICE)
 
     custom_optimizer = torch.optim.Adam(params=custom_model.parameters(),
-                                        lr=Config.LEARN_RATE)  # 将模型参数装入优化器
+                                        lr=Config.LR)  # 将模型参数装入优化器
 
-    trainer = SemanticSegmentationTrainer(custom_model,
-                                          custom_loss_func,
-                                          custom_optimizer,
-                                          get_data('train'),
-                                          get_data('valid'),
-                                          n_class=num_class,
-                                          device=Config.DEVICE,
-                                          model_name=name)
-    trainer.train(epochs=1)  # 开始训（炼）练（丹）
+    # 768x256,1024x384,1536x512
+    trainer = SemanticSegmentationTrainer(
+        custom_model,
+        custom_loss_func,
+        custom_optimizer,
+        get_data('train', resize_to=256, batch_size=Config.TRAIN_BATCH_SIZE),
+        get_data('valid', resize_to=256, batch_size=Config.TRAIN_BATCH_SIZE),
+        n_class=num_class,
+        device=Config.DEVICE,
+        model_name=name)
+    trainer.train(epochs=100)  # 开始训（炼）练（丹）
