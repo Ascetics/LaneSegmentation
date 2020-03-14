@@ -7,6 +7,7 @@ import matplotlib.image as mpimg
 https://github.com/Ascetics/LaneSegmentation/blob/master/utils/process_label.py
 """
 
+
 def id_to_trainid(label_id):
     """
     要求输入的图像是灰度读图，灰阶0-255。
@@ -103,7 +104,7 @@ def trainid_to_id(label_trainid):
     label_id[label_trainid == 5] = 214
 
     # id = 6->7
-    label_id[label_trainid == 6] = 220
+    label_id[label_trainid == 6] = 228
 
     # id = 7->8
     label_id[label_trainid == 7] = 205
@@ -123,25 +124,25 @@ def gray_to_rgb(label_gray):
     rgb[label_gray == 0] = np.array([0, 0, 0])
 
     # id = 1
-    rgb[label_gray == 1] = np.array([70, 130, 180])
+    rgb[label_gray == 1] = np.array([70, 130, 180])  # 浅蓝色
 
     # id = 2
-    rgb[label_gray == 2] = np.array([0, 0, 142])
+    rgb[label_gray == 2] = np.array([0, 0, 142])  # 深蓝色
 
     # id = 3
-    rgb[label_gray == 3] = np.array([220, 220, 0])
+    rgb[label_gray == 3] = np.array([220, 220, 0])  # 黄色
 
     # id = 4->5,因trainId=4都被忽略，5递进为4，转换为RGBlabel的时候要处理，后面一样递进
-    rgb[label_gray == 4] = np.array([128, 64, 128])
+    rgb[label_gray == 4] = np.array([128, 64, 128])  # 紫色
 
     # id = 5->6
-    rgb[label_gray == 5] = np.array([190, 153, 153])
+    rgb[label_gray == 5] = np.array([190, 153, 153])  # 浅粉色人行道
 
     # id = 6->7
-    rgb[label_gray == 6] = np.array([128, 128, 0])
+    rgb[label_gray == 6] = np.array([51, 255, 51])  # 绿色
 
     # id = 7->8
-    rgb[label_gray == 7] = np.array([255, 128, 0])
+    rgb[label_gray == 7] = np.array([255, 128, 0])  # 橘黄色
 
     return rgb
 
