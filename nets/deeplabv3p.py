@@ -150,13 +150,18 @@ class DeepLabV3P(nn.Module):
                           nn.ReLU(inplace=True), ]
         self.reduce_channels = nn.Sequential(*reduce_modules)
 
-        decode_modules = [nn.Conv2d(self.aspp_out_channels + self.reduce_to_channels, 256, 3, padding=1, bias=False),
-                          nn.BatchNorm2d(256),
+        decode_modules = [nn.Conv2d(self.aspp_out_channels + self.reduce_to_channels,
+                                    self.aspp_out_channels,
+                                    3, padding=1, bias=False),
+                          nn.BatchNorm2d(self.aspp_out_channels),
                           nn.ReLU(inplace=True),
-                          nn.Conv2d(256, n_class, 3, padding=1, bias=False),
-                          nn.BatchNorm2d(n_class),
-                          nn.ReLU(inplace=True), ]
-        self.decode = nn.Sequential(*decode_modules)
+                          nn.Conv2d(self.aspp_out_channels,
+                                    self.aspp_out_channels,
+                                    3, padding=1, bias=False),
+                          nn.BatchNorm2d(self.aspp_out_channels),
+                          nn.ReLU(inplace=True)]
+        self.decode = nn.Sequential(*decode_modules)  # 两个3x3 conv decode
+        self.classifier = nn.Conv2d(self.aspp_out_channels, n_class, 1)  # 最终分类
 
         # 初始化参数
         self._init_param()
@@ -184,7 +189,8 @@ class DeepLabV3P(nn.Module):
                                    align_corners=False)  # 上采样和low-level的spatial大小一致
 
         x = torch.cat([high_level, low_level], dim=1)  # cat融合一下
-        x = self.decode(x)  # 后面跟一系列3x3卷积，本实现选择2个3x3卷积
+        x = self.decode(x)  # 后面跟一系列3x3卷积，选择2个3x3卷积
+        x = self.classifier(x)  # 最终分类
 
         return F.interpolate(x, size=size1, mode='bilinear', align_corners=False)  # 上采样和原图像大小一致
 
