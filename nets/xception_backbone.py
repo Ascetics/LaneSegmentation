@@ -152,17 +152,11 @@ class _ConvExitBlock(nn.Module):
 
 
 class _XceptionBackBoneFactory(nn.Module):
-    def __init__(self, in_channels, entry_planes=(128, 256, 728),
-                 output_stride=16, n_middle=16):
+    def __init__(self, in_channels):
         """
         实现一个工厂类，将DeepLabV+论文改进的XceptionBackbone统一到一起。
-        :param inplanes: 输入channels，图像channels
-        :param entry_planes: 每个entry block的输出channels，列表类型
-        :param n_middle: 改进实现用16
-        :param output_stride: 输入和主干输出的比值，默认16x
         """
         super(_XceptionBackBoneFactory, self).__init__()
-        assert len(entry_planes) == 3  # Entry Block共3个
         """
         DeepLabV3论文第3页原文:
         If one would like to double the spatial density of computed feature
@@ -197,17 +191,6 @@ class _XceptionBackBoneFactory(nn.Module):
         对于16x，最后下采样是在stride[0]进行的，dilation[0]=1;后面dilation[1]=2
         对于32x，最后下采样是在stride[1]进行的，dilation[0]和dilation[1]都是1
         """
-        if output_stride == 8:
-            strides = (1, 1)
-            dilations = (4, 4)
-        elif output_stride == 16:
-            strides = (2, 1)
-            dilations = (1, 2)
-        elif output_stride == 32:
-            strides = (2, 2)
-            dilations = (1, 1)
-        else:
-            raise ValueError('output stride error!')
 
         # 以下Entry Flow
         conv1 = [nn.Conv2d(in_channels, 32, 3, stride=2, padding=1, bias=False),
@@ -220,37 +203,28 @@ class _XceptionBackBoneFactory(nn.Module):
                  nn.ReLU(inplace=True), ]
         self.entry_conv2 = nn.Sequential(*conv2)  # 第2个普通卷积,2x
 
-        self.entry_block1 = _ConvBlock(64, entry_planes[0], stride=2)  # 4x
-        self.entry_block2 = _ConvBlock(entry_planes[0], entry_planes[1], stride=2)  # 8x
-        self.entry_block3 = _ConvBlock(entry_planes[1], entry_planes[2],
-                                       stride=strides[0], dilation=dilations[0])
-        # stride=1是8x,dilation应为4
-        # stride=2是16x，dilation应为1
+        self.entry_block1 = _ConvBlock(64, 128, stride=2)  # 4x
+        self.entry_block2 = _ConvBlock(128, 256, stride=2)  # 8x
+        self.entry_block3 = _ConvBlock(256, 728, stride=2)  # 16x
 
         # 以下Middle Flow
-        inplanes = entry_planes[2]
-        mid_block = _ConvBlock(inplanes, inplanes,
-                               stride=1, dilation=dilations[0])  # 不再下采样，根据output stride情况决定dilation
-        self.middle_blocks = nn.ModuleList([mid_block] * n_middle)  # 重复n_middle次
+        mid_block = _ConvBlock(728, 728, stride=1, dilation=2)  # 16x,dilation=2
+        self.middle_blocks = nn.ModuleList([mid_block] * 16)  # 重复16次
 
         # 以下Exit Flow
-        self.exit_block = _ConvExitBlock(inplanes, 1024, stride=strides[1],  # 和前面stride[0]结合使用，决定8x、16x、32x
-                                         dilation=dilations[1])
+        self.exit_block = _ConvExitBlock(728, 1024, stride=1, dilation=2)  # 16x,dilation=2
 
-        conv1 = [SeparableConv2d(1024, 1536, 3, padding=dilations[1],
-                                 dilation=dilations[1], bias=False),
+        conv1 = [SeparableConv2d(1024, 1536, 3, padding=2, dilation=2, bias=False),
                  nn.BatchNorm2d(1536),
                  nn.ReLU(inplace=True), ]
         self.exit_conv1 = nn.Sequential(*conv1)
 
-        conv2 = [SeparableConv2d(1536, 1536, 3, padding=dilations[1],
-                                 dilation=dilations[1], bias=False),
+        conv2 = [SeparableConv2d(1536, 1536, 3, padding=2, dilation=2, bias=False),
                  nn.BatchNorm2d(1536),
                  nn.ReLU(inplace=True), ]
         self.exit_conv2 = nn.Sequential(*conv2)
 
-        conv3 = [SeparableConv2d(1536, 2048, 3, padding=dilations[1],
-                                 dilation=dilations[1], bias=False),
+        conv3 = [SeparableConv2d(1536, 2048, 3, padding=2, dilation=2, bias=False),
                  nn.BatchNorm2d(2048),
                  nn.ReLU(inplace=True), ]
         self.exit_conv3 = nn.Sequential(*conv3)
@@ -273,8 +247,8 @@ class _XceptionBackBoneFactory(nn.Module):
         x = self.entry_conv2(x)  # 2x
         x = self.entry_block1(x)  # 4x
         low_level_features = x
-        x = self.entry_block2(x)
-        x = self.entry_block3(x)
+        x = self.entry_block2(x)  # 8x
+        x = self.entry_block3(x)  # 16x
 
         # Middle Flow
         for block in self.middle_blocks:
@@ -285,19 +259,15 @@ class _XceptionBackBoneFactory(nn.Module):
         x = self.exit_block(x)
         x = self.exit_conv1(x)
         x = self.exit_conv2(x)
-        x = self.exit_conv3(x)
+        x = self.exit_conv3(x)  # 16x
         return x, low_level_features
 
     pass
 
 
 def xception_backbone(in_channels, output_stride=16):
-    if output_stride == 8:
-        return _XceptionBackBoneFactory(in_channels, output_stride=output_stride)
-    elif output_stride == 16:
-        return _XceptionBackBoneFactory(in_channels, output_stride=output_stride)
-    elif output_stride == 32:
-        return _XceptionBackBoneFactory(in_channels, output_stride=output_stride)
+    if output_stride == 16:
+        return _XceptionBackBoneFactory(in_channels)
     else:
         raise ValueError('output stride error!')
 
@@ -308,7 +278,7 @@ if __name__ == '__main__':
     # device = torch.device('cuda:6')
     device = torch.device('cpu')
     # net = XceptionBackbone(3).to(device)
-    net = xception_backbone(3, output_stride=8).to(device)
+    net = xception_backbone(3, output_stride=16).to(device)
     print('in:', net)
 
     in_data = torch.randint(0, 256, (24, 3, 299, 299), dtype=torch.float)
