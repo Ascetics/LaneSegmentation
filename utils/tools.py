@@ -7,7 +7,7 @@ from datetime import datetime
 from config import Config
 
 
-def get_date_time():
+def now_str():
     """
     返回格式化的当前日期时间字符串
     :return: YYYY-mm-dd-HH-MM-SS
@@ -60,7 +60,7 @@ def save_weight(net, name, epoch, save_dir=Config.WEIGHT_SAVE_PATH):
     :return:
     """
     filename = '{:s}-{:s}-epoch-{:02d}.pth'
-    filename = filename.format(name, get_date_time(), epoch)  # 模型参数文件{模型名}-{保存日期时间}-epoch-{第几个epoch}.pkl
+    filename = filename.format(name, now_str(), epoch)  # 模型参数文件{模型名}-{保存日期时间}-epoch-{第几个epoch}.pkl
     save_dir = os.path.join(save_dir, filename)  # 保存的文件绝对路径
     torch.save(net.state_dict(), save_dir)  # 保存模型参数
     return save_dir
