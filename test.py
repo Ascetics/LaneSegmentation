@@ -32,7 +32,7 @@ def test(net, test_data, device, n_class=8, compare=False):
 
     with torch.no_grad():  # 测试阶段，不需要计算梯度，节省内存
         for i_batch, (im, lb) in enumerate(test_data):
-            if i_batch > 1:
+            if i_batch > 10:
                 break
             im_t, lb_t = pair_crop(im, lb)  # PIL Image,PIL Image
             im_t, lb_t = pair_norm_to_tensor(im_t, lb_t)  # [C,H,W]tensor,[H,W]tensor
@@ -90,7 +90,7 @@ def test(net, test_data, device, n_class=8, compare=False):
 
 
 if __name__ == '__main__':
-    dev = torch.device('cuda:4')  # 选择一个可用的GPU
+    dev = torch.device('cuda:7')  # 选择一个可用的GPU
     load_file = ('/root/private/LaneSegmentation/weight/'
                  'deeplabv3p_xception-2020-03-17 06:03:02.609908-epoch-14.pth')  # 读取训练好的参数
     model = get_model('deeplabv3p_xception', in_channels=3, n_class=8, early_weight=load_file)
@@ -98,5 +98,5 @@ if __name__ == '__main__':
          test_data=LaneSegDataset(Config.DATA_LIST['valid']),  # 不剪裁，不缩放的测试集，读取PIL Image
          n_class=8,
          device=dev,
-         compare=False)
+         compare=True)
     pass
