@@ -7,6 +7,14 @@ from datetime import datetime
 from config import Config
 
 
+def get_date_time():
+    """
+    返回格式化的当前日期时间字符串
+    :return: YYYY-mm-dd-HH-MM-SS
+    """
+    return time.strftime('%Y-%m-%d-%H-%M-%S', time.localtime())
+
+
 def epoch_timer(func):
     """
     装饰器。epoch计时器，记录一个epoch用时并打印
@@ -20,8 +28,8 @@ def epoch_timer(func):
         end_time = datetime.now()  # 结束时间
         mm, ss = divmod((end_time - begin_time).seconds, 60)  # 秒换算成分、秒
         hh, mm = divmod(mm, 60)  # 分钟换算成时、分
-        time_str = 'Time: {:02d}:{:02d}:{:02d}|'.format(hh, mm, ss)  # HH:mm:ss
-        log(time_str)  # 记录到日志里面
+        duration_str = 'Duration: {:02d}:{:02d}:{:02d}|'.format(hh, mm, ss)  # HH:mm:ss
+        log(duration_str)  # 记录到日志里面
         return res  # 返回func返回值
 
     return timer
@@ -31,7 +39,7 @@ def log(msg, logfile=Config.LOG_FILE):
     """
     日志记录
     :param msg: 要记录的内容
-    :param logfile: 日志文件，如果没有回创建
+    :param logfile: 日志文件，如果没有就创建
     :return:
     """
     log_f = open(logfile, mode='a')
@@ -51,8 +59,8 @@ def save_weight(net, name, epoch, save_dir=Config.WEIGHT_SAVE_PATH):
     :param save_dir: 保存模型参数的路径，不包含文件名
     :return:
     """
-    filename = '{:s}-{:s}-epoch-{:02d}.pth'.format(name, str(datetime.now()),
-                                                   epoch)  # 模型参数文件{模型名}-{保存日期时间}-epoch-{第几个epoch}.pkl
+    filename = '{:s}-{:s}-epoch-{:02d}.pth'
+    filename = filename.format(name, get_date_time(), epoch)  # 模型参数文件{模型名}-{保存日期时间}-epoch-{第几个epoch}.pkl
     save_dir = os.path.join(save_dir, filename)  # 保存的文件绝对路径
     torch.save(net.state_dict(), save_dir)  # 保存模型参数
     return save_dir
@@ -146,6 +154,7 @@ if __name__ == '__main__':
     print('mean_iou', get_metrics(c, metrics='mean_iou'))
     print('recall', get_metrics(c, metrics='recall'))
     print('precision', get_metrics(c, metrics='precision'))
+
 
     @epoch_timer
     def test_train():  # 模拟一个epoch训练
