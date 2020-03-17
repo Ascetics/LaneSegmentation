@@ -3,7 +3,7 @@ import torchvision.transforms.functional as TF
 import matplotlib.pyplot as plt
 import numpy as np
 import random
-from PIL import Image
+from PIL import Image, ImageFilter
 import torchvision.transforms as tsfs
 
 
@@ -300,6 +300,29 @@ class PairRandomFixErase(object):
     pass
 
 
+class PairRandomGaussianBlur(object):
+    def __init__(self):
+        """
+        随机高斯模糊
+        """
+        super(PairRandomGaussianBlur, self).__init__()
+        pass
+
+    def __call__(self, image, label=None):
+        """
+        随机高斯模糊
+        :param image: [H,W,C] PIL Image RGB 0~255
+        :param label: [H,W] PIL Image trainId
+        :return: [H,W,C] PIL Image RGB 0~255,  [H,W] PIL Image trainId
+        """
+        high = min(image.size[0], image.size[1])  # 取图像HW最小值
+        radius = random.randint(1, high)  # 随机高斯模糊半径
+        gaussian_filter = ImageFilter.GaussianBlur(radius=radius)  # 高斯模糊过滤器
+        return image.filter(gaussian_filter), label
+
+    pass
+
+
 if __name__ == '__main__':
     x = np.array([[[53, 170, 134],
                    [92, 111, 202]],
@@ -348,23 +371,25 @@ if __name__ == '__main__':
     resize = PairResize(size=256)
     to_tensor = PairNormalizeToTensor(norm=False)
     random_fix_crop = PairRandomFixErase()
+    gaussian_blur = PairRandomGaussianBlur()
     ts = [
-        crop,
+        # crop,
         # crop_tf,
-        random_hflip,
+        # random_hflip,
         # random_vflip,
         # adjust,
-        adjust_gamma,
-        resize,
-        to_tensor,
-        random_fix_crop,
+        # adjust_gamma,
+        # resize,
+        # to_tensor,
+        # random_fix_crop,
+        gaussian_blur,
     ]
     for t in ts:
         im, lb = t(im, lb)
         pass
 
-    print(im.shape, lb.shape)
-    im = tsfs.ToPILImage()(im).convert('RGB')
+    # print(im.shape, lb.shape)
+    # im = tsfs.ToPILImage()(im).convert('RGB')
 
     ax[2].imshow(im)
     ax[3].imshow(lb, cmap='gray')
