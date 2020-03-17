@@ -4,7 +4,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 from PIL import Image, ImageFilter
-import torchvision.transforms as tsfs
 
 
 class PairCrop(object):
