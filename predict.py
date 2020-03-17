@@ -101,10 +101,10 @@ def predict(net, device, image, label, resize_to=256, name=None):
 
 
 if __name__ == '__main__':
-    dev = torch.device('cuda:5')  # 选择一个可用的GPU
+    dev = torch.device('cuda:6')  # 选择一个可用的GPU
 
     early_weight = ('/root/private/LaneSegmentation/weight/'
-                    'deeplabv3p_xception-2020-03-15 13_59_33.617252-epoch-07.pth')  # 读取训练好的参数
+                    'deeplabv3p_xception-2020-03-17 06:03:02.609908-epoch-14.pth')  # 读取训练好的参数
     print('loading model...')
     model = get_model('deeplabv3p_xception', in_channels=3, n_class=8,
                       early_weight=early_weight)  # 加载读取的参数
