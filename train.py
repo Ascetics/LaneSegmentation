@@ -235,7 +235,7 @@ if __name__ == '__main__':
     name = 'deeplabv3p_xception'
     # load_file = None
     load_file = ('/root/private/LaneSegmentation/weight/'
-                 'deeplabv3p_xception-2020-03-14 10:29:13.577643-epoch-01.pth')
+                 'deeplabv3p_xception-2020-03-17 06:03:02.609908-epoch-14.pth')
 
     num_class = 8
     custom_model = get_model(name, 3, num_class, load_file)
@@ -252,9 +252,9 @@ if __name__ == '__main__':
         custom_model,
         custom_loss_func,
         custom_optimizer,
-        get_data('train', resize_to=256, batch_size=Config.TRAIN_BATCH_SIZE),
-        get_data('valid', resize_to=256, batch_size=Config.TRAIN_BATCH_SIZE),
+        get_data('train', resize_to=384, batch_size=Config.TRAIN_BATCH_SIZE),
+        get_data('valid', resize_to=384, batch_size=Config.TRAIN_BATCH_SIZE),
         n_class=num_class,
         device=Config.DEVICE,
         model_name=name)
-    trainer.train(epochs=100)  # 开始训（炼）练（丹）
+    trainer.train(epochs=20)  # 开始训（炼）练（丹）
