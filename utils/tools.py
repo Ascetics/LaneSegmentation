@@ -87,8 +87,8 @@ def get_confusion_matrix(pred, label, n_class=8):
         dim=0是grand truth
         dim=1是predict
     """
-    pred = np.asarray(pred).astype(np.long)  # 必须转化为int或long类型否则bincount报错
-    label = np.asarray(label).astype(np.long)
+    pred = np.asarray(pred.cpu()).astype(np.long)  # 必须转化为int或long类型否则bincount报错
+    label = np.asarray(label.cpu()).astype(np.long)
     assert pred.shape == label.shape
 
     mask = (label >= 0) & (label < n_class)  # 转化为一维向量
